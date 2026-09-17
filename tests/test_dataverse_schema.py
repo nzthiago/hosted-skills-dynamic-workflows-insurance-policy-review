@@ -160,7 +160,10 @@ def test_azure_cli_auth_rejects_malformed_token_output(monkeypatch) -> None:
         lambda *args: "WARNING: authentication output was unavailable",
     )
 
-    with pytest.raises(RuntimeError, match="Azure CLI.*exactly one JWT"):
+    with pytest.raises(
+        RuntimeError,
+        match=r"Azure CLI did not return exactly one JWT access token\.",
+    ):
         setup_dataverse_schema._acquire_dataverse_access_token(
             "https://example.crm.dynamics.com",
             "azure-cli",

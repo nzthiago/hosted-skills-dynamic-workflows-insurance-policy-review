@@ -141,7 +141,9 @@ azd() {
 az() {
     case "$1 $2 $3" in
         "storage account show")
-            printf '/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Storage/storageAccounts/sttest'
+            printf '%s' \
+                '/subscriptions/sub/resourceGroups/rg-test/providers/' \
+                'Microsoft.Storage/storageAccounts/sttest'
             ;;
         "resource show -g")
             printf 'func-test.azurewebsites.net'
