@@ -20,24 +20,54 @@ def test_connector_preview_bundle_and_timeout() -> None:
     assert host["extensionBundle"]["version"] == "[4.42.0, 5.0.0)"
 
 
-def test_infrastructure_uses_only_created_row_dataverse_trigger() -> None:
+def test_infrastructure_defaults_to_created_row_dataverse_trigger() -> None:
     gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()
-    trigger = (ROOT / "infra/app/trigger-config.bicep").read_text()
+    dataverse_trigger = (ROOT / "infra/app/trigger-config.bicep").read_text()
+    outlook_trigger = (ROOT / "infra/app/outlook-trigger-config.bicep").read_text()
+    main = (ROOT / "infra/main.bicep").read_text()
     storage = (ROOT / "infra/app/storage.bicep").read_text()
     rbac = (ROOT / "infra/app/rbac.bicep").read_text()
     assert "commondataservice" in gateway
-    assert "mcpserverconfigs" not in gateway
-    assert "GetOnNewItems_V2" in trigger
-    assert "SubscribeWebhookTrigger" not in trigger
-    assert "recurrenceInterval string = '5'" in trigger
+    assert "GetOnNewItems_V2" in dataverse_trigger
+    assert "SubscribeWebhookTrigger" not in dataverse_trigger
+    assert "recurrenceInterval string = '5'" in dataverse_trigger
+    assert "param enableOutlookFallback bool = false" in main
+    assert "OnNewEmailV3" in outlook_trigger
     assert "requestQueue" not in storage
     assert "storageQueueDataContributorRoleId" not in rbac
 
 
-def test_outlook_connector_dependencies_are_removed() -> None:
+def test_outlook_fallback_is_allow_listed_and_optional() -> None:
     requirements = (ROOT / "src/requirements.txt").read_text()
+    gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()
     main = (ROOT / "infra/main.bicep").read_text()
-    assert "httpx" not in requirements
-    assert "\nmcp" not in requirements
-    assert "O365_" not in main
-    assert "GetAttachment_V2" not in main
+    assert "httpx" in requirements
+    assert "\nmcp" in requirements
+    assert "connectorName: 'office365'" in gateway
+    assert "GetAttachment_V2" in gateway
+    assert "if (outlookEnabled)" in gateway
+    assert "ENABLE_OUTLOOK_FALLBACK" in main
+
+
+def test_both_connector_functions_are_registered() -> None:
+    function_app = (ROOT / "src/function_app.py").read_text()
+    assert 'name="DataversePolicyIntake"' in function_app
+    assert 'name="OutlookPolicyIntake"' in function_app
+
+
+def test_combined_hooks_keep_dataverse_primary() -> None:
+    azure_yaml = (ROOT / "azure.yaml").read_text()
+    configure = (ROOT / "infra/scripts/configure-connectors.sh").read_text()
+    disable = (ROOT / "infra/scripts/disable-outlook-trigger-if-needed.sh").read_text()
+    assert "configure-connectors.sh" in azure_yaml
+    assert "preprovision:" in azure_yaml
+    assert "disable-outlook-trigger-if-needed.sh" in azure_yaml
+    assert configure.index("disable-outlook-trigger-if-needed.sh") < configure.index(
+        "configure-dataverse-trigger.sh"
+    )
+    assert configure.index("configure-dataverse-trigger.sh") < configure.index(
+        "configure-outlook-trigger.sh"
+    )
+    assert 'if [ "$outlook_enabled" = "true" ]' in configure
+    assert "office365-policy-request-email" in disable
+    assert "az resource delete" in disable

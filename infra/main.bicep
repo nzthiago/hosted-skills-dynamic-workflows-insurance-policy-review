@@ -50,6 +50,12 @@ param dataverseEnvironmentName string = ''
 @description('Entity set name for the Policy Service Request table.')
 param dataverseTableName string = 'ipr_policyservicerequests'
 
+@description('Provision and configure Office 365 Outlook as an attachment-based fallback intake.')
+param enableOutlookFallback bool = false
+
+@description('Office 365 Outlook folder ID or connector-recognized path used for fallback intake.')
+param outlookFolderPath string = 'Inbox/Policy Review'
+
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = {
   'azd-env-name': environmentName
@@ -65,6 +71,7 @@ var foundryProjectName = '${foundryAccountName}-project'
 var schedulerName = 'dts-policy-${resourceToken}'
 var connectorGatewayName = 'cgw-policy-${resourceToken}'
 var dataverseConnectionName = 'dataverse-policy-intake'
+var outlookConnectionName = 'office365-outlook'
 var taskHubName = 'policyreviews'
 var deploymentContainerName = 'app-package-${resourceToken}'
 var reportContainerName = 'policy-review-packets'
@@ -181,18 +188,26 @@ module rbac './app/rbac.bicep' = {
   }
 }
 
-module dataverseConnector './app/connector-gateway.bicep' = {
-  name: 'dataverse-connector'
+module connectors './app/connector-gateway.bicep' = {
+  name: 'connector-gateway'
   scope: resourceGroup
   params: {
     connectorGatewayName: connectorGatewayName
-    connectionName: dataverseConnectionName
+    dataverseConnectionName: dataverseConnectionName
+    outlookEnabled: enableOutlookFallback
+    outlookConnectionName: outlookConnectionName
     location: connectorNamespaceLocation
     tags: tags
+    managedIdentityPrincipalId: identity.outputs.principalId
     deployerPrincipalId: deployerPrincipalId
     tenantId: tenant().tenantId
   }
 }
+
+var outlookAppSettings = enableOutlookFallback ? {
+  O365_MCP_SERVER_URL: connectors.outputs.outlookMcpEndpointUrl
+  O365_MCP_CLIENT_ID: identity.outputs.clientId
+} : {}
 
 module api './app/api.bicep' = {
   name: 'api'
@@ -210,7 +225,7 @@ module api './app/api.bicep' = {
     deploymentStorageContainerName: deploymentContainerName
     identityId: identity.outputs.resourceId
     identityClientId: identity.outputs.clientId
-    appSettings: {
+    appSettings: union({
       AZURE_FUNCTIONS_AGENTS_PROVIDER: 'foundry'
       FOUNDRY_PROJECT_ENDPOINT: foundry.outputs.projectEndpoint
       FOUNDRY_MODEL: foundry.outputs.modelDeploymentName
@@ -222,7 +237,7 @@ module api './app/api.bicep' = {
       POLICY_INTAKE_CONTAINER: intakeContainerName
       DATAVERSE_TABLE_NAME: dataverseTableName
       ENABLE_MULTIPLATFORM_BUILD: 'true'
-    }
+    }, outlookAppSettings)
   }
 }
 
@@ -234,12 +249,18 @@ output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.name
 output POLICY_REVIEW_STORAGE_URL string = storage.outputs.blobEndpoint
 output POLICY_REVIEW_CONTAINER string = reportContainerName
 output POLICY_INTAKE_CONTAINER string = intakeContainerName
-output DATAVERSE_CONNECTOR_GATEWAY_NAME string = dataverseConnector.outputs.connectorGatewayName
-output DATAVERSE_CONNECTION_NAME string = dataverseConnector.outputs.connectionName
-output DATAVERSE_CONNECTION_ID string = dataverseConnector.outputs.connectionId
+output DATAVERSE_CONNECTOR_GATEWAY_NAME string = connectors.outputs.connectorGatewayName
+output DATAVERSE_CONNECTION_NAME string = connectors.outputs.dataverseConnectionName
+output DATAVERSE_CONNECTION_ID string = connectors.outputs.dataverseConnectionId
 output DATAVERSE_ENVIRONMENT_URL string = dataverseEnvironmentUrl
 output DATAVERSE_ENVIRONMENT_NAME string = dataverseEnvironmentName
 output DATAVERSE_TABLE_NAME string = dataverseTableName
+output ENABLE_OUTLOOK_FALLBACK bool = enableOutlookFallback
+output O365_CONNECTOR_GATEWAY_NAME string = connectors.outputs.connectorGatewayName
+output O365_CONNECTION_NAME string = connectors.outputs.outlookConnectionName
+output O365_CONNECTION_ID string = connectors.outputs.outlookConnectionId
+output O365_MCP_SERVER_URL string = connectors.outputs.outlookMcpEndpointUrl
+output OUTLOOK_FOLDER_PATH string = outlookFolderPath
 output DURABLE_TASK_SCHEDULER_NAME string = dts.outputs.name
 output DURABLE_TASK_HUB_NAME string = dts.outputs.taskHubName
 output DURABLE_TASK_DASHBOARD_URL string = dts.outputs.dashboardUrl

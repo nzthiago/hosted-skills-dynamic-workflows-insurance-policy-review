@@ -47,6 +47,31 @@ sensitive row contents.
 This is expected when its Request ID already has a normalized manifest. Connector
 retries race on a Blob lease and cannot create another manifest.
 
+## Outlook fallback is not provisioned
+
+Outlook is intentionally disabled by default. Enable it and reprovision:
+
+```bash
+azd env set ENABLE_OUTLOOK_FALLBACK true
+azd up
+```
+
+Authorize the Office 365 connection in the Connector Namespace portal. Confirm the
+dedicated folder exists and `OUTLOOK_FOLDER_PATH` uses the connector-recognized path.
+
+## An Outlook message is rejected
+
+Confirm the subject is exactly:
+
+```text
+[POLICY-REQUEST] <request-id> | <policy-id> | <driver-name>
+```
+
+Non-inline attachments must be named
+`<driver_license|signed_request>__<document-id>__<file-name>`, use PDF/JPEG/PNG, and be
+10 MiB or smaller. The trigger must include attachment IDs; inline `contentBytes` are
+discarded and `GetAttachment_V2` retrieves each attachment explicitly.
+
 ## The workflow does not start
 
 Check the `policy-intake/normalized/` prefix and open:
@@ -57,10 +82,10 @@ azd env get-value DURABLE_TASK_DASHBOARD_URL
 
 ## Live connector testing is blocked
 
-Use the fallback:
+Use manual invocation regardless of which connector mode is provisioned:
 
 ```bash
 python scripts/demo.py submit-manual --request examples/policy-service-request.json
 ```
 
-It creates the same metadata-only normalized manifest without Dataverse.
+It creates the same metadata-only normalized manifest without Dataverse or Outlook.

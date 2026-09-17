@@ -21,6 +21,21 @@ A Blob lease serializes concurrent deliveries. The manifest uses `overwrite=Fals
 connector retries or another row with the same Request ID cannot emit another workflow
 trigger.
 
+## Optional Outlook intake
+
+When `ENABLE_OUTLOOK_FALLBACK=true`, `OnNewEmailV3` invokes `OutlookPolicyIntake`.
+[src/outlook_intake.py](../src/outlook_intake.py):
+
+1. Validates the `[POLICY-REQUEST]` subject contract and attachment naming convention.
+2. Discards inline attachment bodies and calls only allow-listed `GetAttachment_V2`.
+3. Validates file type and size, then stages each attachment in Blob Storage.
+4. Uses Outlook message ID plus Request ID for source idempotency.
+5. Creates the same deterministic `normalized/<request-id>.json` manifest.
+
+The manifest name is shared with Dataverse and manual invocation. The first accepted
+source wins; retries or alternate-source delivery with the same Request ID do not start
+another workflow.
+
 ## Hosted skill and Dynamic Workflow
 
 The normalized manifest Blob triggers [src/main.agent.md](../src/main.agent.md). The first
@@ -52,4 +67,4 @@ or authorize policy changes.
 ## Manual fallback
 
 `scripts/demo.py submit-manual` writes the same metadata-only normalized manifest. It
-bypasses Dataverse polling without creating another workflow design.
+bypasses both connectors without creating another workflow design.

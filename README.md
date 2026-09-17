@@ -4,17 +4,20 @@
 
 A markdown-first [Azure Functions hosted skill](https://azure.github.io/azure-functions-agents-runtime/)
 that turns created Microsoft Dataverse policy-service-request rows into durable,
-human-reviewed document packets.
+human-reviewed document packets. An optional Office 365 Outlook mode preserves
+attachment-based intake as a faster fallback.
 
 ## What it does
 
 - Polls a Dataverse `Policy Service Request` table through a Connector Namespace trigger.
 - Normalizes structured row fields into the sample's existing `documents[]` metadata contract.
+- Optionally accepts convention-based Outlook messages and explicitly retrieves attachments.
 - Creates one deterministic normalized request manifest in Blob Storage.
 - Runs validate → parallel inspect → build → publish as a Dynamic Workflow.
 - Produces an HTML report while keeping every policy decision human-owned.
 
-The sample reviews metadata only. It does not retrieve files, inspect binary contents,
+The primary Dataverse path reviews metadata only. The optional Outlook path stages
+attachments for reference, but the workflow still does not inspect binary contents,
 verify document authenticity, update Dataverse rows, or update an insurance policy.
 
 ## Dataverse row contract
@@ -84,6 +87,31 @@ After application deployment, `postdeploy` creates only the proven
 not claim update or delete support. The broader `SubscribeWebhookTrigger` is intentionally
 not configured because Connector Namespace trigger creation is not currently proven.
 
+## Optional Outlook fallback
+
+Enable the alternate attachment-based path before provisioning:
+
+```bash
+azd env set ENABLE_OUTLOOK_FALLBACK true
+azd env set OUTLOOK_FOLDER_PATH "Inbox/Policy Review"
+azd up
+```
+
+The Connector Namespace then provisions an Office 365 Outlook connection, a read-only
+`GetAttachment_V2` MCP surface, and an `OnNewEmailV3` trigger in addition to Dataverse.
+Authorization remains interactive. Use a dedicated mailbox folder and send messages with:
+
+```text
+Subject: [POLICY-REQUEST] <request-id> | <policy-id> | <driver-name>
+Attachment: driver_license__<document-id>__<file-name>
+Attachment: signed_request__<document-id>__<file-name>
+```
+
+The Outlook intake ignores inline attachment bodies, retrieves each attachment explicitly,
+accepts PDF/JPEG/PNG files up to 10 MiB, and stages them under the intake container. Both
+connector paths use the same deterministic request manifest, so whichever path accepts a
+Request ID first prevents the other path from starting a duplicate workflow.
+
 ## Run the demo
 
 1. Complete schema setup, deployment, connector authorization, and trigger configuration
@@ -106,8 +134,8 @@ not configured because Connector Namespace trigger creation is not currently pro
 
 ## Manual fallback
 
-If Dataverse polling or authorization delays the demo, submit the same normalized
-metadata contract directly:
+If both connector paths are unavailable or Outlook fallback was not provisioned, submit
+the same normalized metadata contract directly:
 
 ```bash
 export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
@@ -145,13 +173,14 @@ manual fallback.
 - Authorize the Dataverse connection and create the trigger before inserting the demo row.
 - Use a unique Request ID for each rehearsal and live run.
 - Budget at least five minutes for polling; do not edit an existing row and expect a run.
+- If enabled, pre-authorize Outlook and keep one correctly named attachment message ready.
 - Keep `examples/policy-service-request.json` ready for immediate manual fallback.
 - Confirm the Durable Task Scheduler dashboard and report download before presenting.
 
 ## How it works
 
-Dataverse `GetOnNewItems_V2` poll → `DataversePolicyIntake` → normalized manifest Blob →
-hosted skill → Durable Task Scheduler → HTML report Blob.
+Dataverse `GetOnNewItems_V2` poll (primary) or Outlook `OnNewEmailV3` (optional) →
+normalized manifest Blob → hosted skill → Durable Task Scheduler → HTML report Blob.
 
 The normalized manifest is create-only and keyed by Request ID. A Blob lease serializes
 concurrent deliveries, and report publication uses a stable overwrite-safe Blob name.

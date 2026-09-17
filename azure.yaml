@@ -8,25 +8,36 @@ services:
     language: python
     host: function
 hooks:
+  preprovision:
+    windows:
+      shell: pwsh
+      run: ./infra/scripts/disable-outlook-trigger-if-needed.ps1
+      interactive: false
+      continueOnError: false
+    posix:
+      shell: sh
+      run: ./infra/scripts/disable-outlook-trigger-if-needed.sh
+      interactive: false
+      continueOnError: false
   postprovision:
     windows:
       shell: pwsh
-      run: ./infra/scripts/authorize-dataverse.ps1
+      run: ./infra/scripts/authorize-connectors.ps1
       interactive: true
       continueOnError: false
     posix:
       shell: sh
-      run: ./infra/scripts/authorize-dataverse.sh
+      run: ./infra/scripts/authorize-connectors.sh
       interactive: true
       continueOnError: false
   postdeploy:
     windows:
       shell: pwsh
-      run: ./infra/scripts/configure-dataverse-trigger.ps1
+      run: ./infra/scripts/configure-connectors.ps1
       interactive: true
       continueOnError: false
     posix:
       shell: sh
-      run: ./infra/scripts/configure-dataverse-trigger.sh
+      run: ./infra/scripts/configure-connectors.sh
       interactive: true
       continueOnError: false
