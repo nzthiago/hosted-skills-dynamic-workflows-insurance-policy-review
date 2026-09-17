@@ -15,8 +15,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "dataverse" / "policy-service-request.schema.json"
-JWT_PATTERN = re.compile(
-    r"^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
+PAC_TOKEN_LINE_PATTERN = re.compile(
+    r"^(?:Token:\s*)?"
+    r"(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$"
 )
 
 
@@ -36,11 +37,11 @@ def _run_pac(*args: str) -> str:
 
 
 def _extract_pac_access_token(output: str) -> str:
-    tokens = [
-        line.strip()
-        for line in output.splitlines()
-        if JWT_PATTERN.fullmatch(line.strip())
-    ]
+    tokens = []
+    for line in output.splitlines():
+        match = PAC_TOKEN_LINE_PATTERN.fullmatch(line.strip())
+        if match:
+            tokens.append(match.group(1))
     if len(tokens) != 1:
         raise RuntimeError(
             "Power Platform CLI did not return exactly one JWT access token."

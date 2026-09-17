@@ -90,6 +90,19 @@ def test_pac_access_token_ignores_banner_output() -> None:
     assert setup_dataverse_schema._extract_pac_access_token(output) == token
 
 
+def test_pac_access_token_accepts_pac_2_12_token_prefix() -> None:
+    token = "eyJheader.payload_signature.token-signature"
+    output = (
+        "Connected to insurance-policy-e2e-mi\n"
+        "Resource: https://example.crm.dynamics.com\n"
+        "Expires On: 2026-09-17 22:00:00Z\n"
+        "Expires In: 00:59:59\n"
+        f"Token: {token}\n"
+    )
+
+    assert setup_dataverse_schema._extract_pac_access_token(output) == token
+
+
 def test_pac_access_token_rejects_malformed_output() -> None:
     with pytest.raises(RuntimeError, match="exactly one JWT"):
         setup_dataverse_schema._extract_pac_access_token(
