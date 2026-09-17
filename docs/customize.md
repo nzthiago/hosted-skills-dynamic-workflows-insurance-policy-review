@@ -1,47 +1,34 @@
 # Customize
 
-The sample intentionally keeps the domain logic in one file:
-[src/tools/policy_review_tools.py](../src/tools/policy_review_tools.py).
+## Change the mail contract
 
-## Change required documents
+Edit `SUBJECT_PATTERN` and `ATTACHMENT_PATTERN` in
+[src/outlook_intake.py](../src/outlook_intake.py), then update README examples and tests.
+Keep parsing deterministic; do not ask the model to interpret mailbox commands.
 
-Edit `REQUIRED_DOCUMENTS`, then update the example request. The report lists any type
-in this collection without a received document as missing.
+## Change attachment limits
 
-## Read real documents
+Update `ALLOWED_CONTENT_TYPES` and `MAX_ATTACHMENT_BYTES`. Treat email names, MIME types,
+and content as untrusted. Keep connector operations read-only and allow-listed.
 
-`inspect_driver_document` currently maps message metadata to a simple evidence state.
-To connect a document system, replace that mapping with an approved lookup while
-keeping the function:
+## Inspect real documents
 
-- synchronous
-- JSON serializable
-- free of policy decisions
-- safe to retry
-
-## Change the report
-
-`build_driver_review_report` creates the HTML. Adjust its markup or add
-decision-neutral fields, but keep:
-
-- `review_status: human_review_required`
-- `decision: null`
-- a clear instruction that a person must verify the source documents
+`inspect_driver_document` currently evaluates normalized metadata and Blob references.
+Document extraction/authenticity checking is a separate safety-sensitive extension. Keep
+the report decision-neutral and require authorized human verification.
 
 ## Change the workflow
 
-The planning instructions are in [src/main.agent.md](../src/main.agent.md). The current
-plan is validate, inspect in parallel, build, and publish.
+The plan is in [src/main.agent.md](../src/main.agent.md). Preserve:
 
-A new workflow activity should be a synchronous function decorated with
-`@workflow_tool`. Give its description clear input and output contracts. Make any side
-effects idempotent because durable activities can be retried.
+- load → validate → parallel inspect → build → publish ordering
+- JSON-serializable workflow activity results
+- idempotent side effects
+- `review_status: human_review_required`
+- `decision: null`
 
-Redeploy code changes with:
+## Use another intake connector
 
-```bash
-azd deploy
-```
-
-Next: [How it works](how-it-works.md) | [Try variations](use-cases.md) |
-[Deploy](deploy.md)
+Keep the normalized manifest contract stable. Replace only the ingestion function,
+Connector Namespace resources, and trigger config. Do not expose write/delete operations
+when read-only retrieval is sufficient.

@@ -1,39 +1,41 @@
 # How it works
 
-A JSON request on the `policy-service-requests` queue starts the hosted skill in
-[src/main.agent.md](../src/main.agent.md). The model creates a four-step workflow and
-Durable Task Scheduler runs it in the background.
+## Intake
 
-## The four steps
+`OnNewEmailV3` watches the configured Office 365 Outlook folder and invokes
+`OutlookPolicyIntake` in [src/function_app.py](../src/function_app.py).
 
-1. `validate_add_driver_request` validates the policy, driver, document metadata, and
-   report destination.
-2. `inspect_driver_document` runs once for each submitted document. These activities
-   can run in parallel.
-3. `build_driver_review_report` joins the ordered inspection results and creates HTML.
-4. `publish_driver_review_report` writes the HTML to Blob Storage.
+[src/outlook_intake.py](../src/outlook_intake.py):
 
-The activities are regular synchronous Python functions in
-[src/tools/policy_review_tools.py](../src/tools/policy_review_tools.py). They do not call
-a model.
+1. Parses the Connector Extension callback envelope.
+2. Enforces the subject and attachment-name contracts.
+3. Ignores inline attachments and trigger-provided attachment bodies.
+4. Calls the allow-listed Connector MCP `GetAttachment_V2` operation by message ID and
+   attachment ID.
+5. Validates MIME type/size, decodes Base64, computes SHA-256, and uploads each binary.
+6. Creates one deterministic `normalized/<request-id>.json` manifest.
 
-## Why use a Dynamic Workflow?
+A Blob lease serializes concurrent deliveries. The final manifest is created with
+`overwrite=False`, so connector retries and resends with the same request ID do not emit
+another manifest.
 
-The request controls how many document activities run. The workflow can run those
-activities in parallel, preserve their results, survive restarts, and expose progress
-in the scheduler dashboard.
+## Hosted skill and Dynamic Workflow
 
-```mermaid
-flowchart LR
-    queue[[Queue request]] --> model{{Model plans workflow}}
-    model --> scheduler[(Durable Task Scheduler)]
-    scheduler --> validate[Validate]
-    validate --> license[Inspect license]
-    validate --> form[Inspect signed request]
-    license --> report[Build report]
-    form --> report
-    report --> blob[(Blob report)]
-```
+The normalized manifest Blob triggers [src/main.agent.md](../src/main.agent.md). Because
+the runtime's Blob trigger serialization exposes Blob metadata rather than file contents,
+the first workflow tool loads the manifest.
+
+The workflow then:
+
+1. `load_normalized_policy_request`
+2. `validate_add_driver_request`
+3. `inspect_driver_document` for every staged document, in parallel
+4. `build_driver_review_report`
+5. `publish_driver_review_report`
+
+The activities are synchronous, JSON-serializable `@workflow_tool` functions in
+[src/tools/policy_review_tools.py](../src/tools/policy_review_tools.py). The publisher
+uses a stable report name and `overwrite=True`, making report retries idempotent.
 
 ## Human decision boundary
 
@@ -46,14 +48,10 @@ The generated result always contains:
 }
 ```
 
-The sample checks metadata such as `received`, `missing`, or `expired`. It does not open
-a file, verify its authenticity, or decide whether the driver should be added.
+The sample stages files but inspects metadata only. It does not validate authenticity,
+interpret policy coverage, or authorize a policy change.
 
-## Safe retries
+## Manual fallback
 
-A durable activity can run more than once. The publisher uses the request's stable Blob
-name with `overwrite=True`, so a retry updates the same report instead of creating a
-duplicate.
-
-Next: [Try variations](use-cases.md) | [Customize](customize.md) |
-[Deploy](deploy.md)
+`scripts/demo.py submit-manual` stages local or OneDrive-synced files and writes the same
+normalized manifest. This bypasses Outlook without creating a second workflow design.

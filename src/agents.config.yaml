@@ -1,2 +1,2 @@
 model: $FOUNDRY_MODEL
-timeout: 900
+timeout: 1800

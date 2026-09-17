@@ -1,26 +1,28 @@
-"""Submit the sample request or download its generated report from local or Azure Storage."""
+"""Submit a normalized fallback request or download its generated report."""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 from azure.identity import AzureDeveloperCliCredential
-from azure.storage.blob import BlobServiceClient
-from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+from azure.storage.blob import BlobServiceClient, ContentSettings
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REQUEST = ROOT / "examples" / "policy-service-request.json"
 DEFAULT_OUTPUT = ROOT / "output" / "PSR-2026-00042.html"
 DEFAULT_BLOB = "reviews/PSR-2026-00042.html"
 DEFAULT_CONNECTION = "UseDevelopmentStorage=true"
-QUEUE_NAME = "policy-service-requests"
 DEFAULT_CONTAINER = "policy-review-packets"
+DEFAULT_INTAKE_CONTAINER = "policy-intake"
+SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 def _connection_string() -> str:
@@ -31,25 +33,8 @@ def _container_name() -> str:
     return os.environ.get("POLICY_REVIEW_CONTAINER", DEFAULT_CONTAINER)
 
 
-def _queue_name() -> str:
-    return os.environ.get("POLICY_REQUEST_QUEUE", QUEUE_NAME)
-
-
-def _queue_client() -> QueueClient:
-    queue_name = _queue_name()
-    queue_url = os.environ.get("POLICY_REVIEW_QUEUE_URL")
-    if queue_url:
-        return QueueClient(
-            account_url=queue_url,
-            queue_name=queue_name,
-            credential=AzureDeveloperCliCredential(),
-            message_encode_policy=TextBase64EncodePolicy(),
-        )
-    return QueueClient.from_connection_string(
-        _connection_string(),
-        queue_name,
-        message_encode_policy=TextBase64EncodePolicy(),
-    )
+def _intake_container_name() -> str:
+    return os.environ.get("POLICY_INTAKE_CONTAINER", DEFAULT_INTAKE_CONTAINER)
 
 
 def _blob_service_client() -> BlobServiceClient:
@@ -69,19 +54,92 @@ def _read_request(path: Path) -> dict[str, Any]:
     return value
 
 
-def submit(request_path: Path) -> None:
+def submit_manual(request_path: Path) -> None:
     request = _read_request(request_path)
-    queue = _queue_client()
-    with suppress(ResourceExistsError):
-        queue.create_queue()
-    queue.send_message(json.dumps(request, separators=(",", ":")))
+    request_id = request.get("request_id")
+    if not isinstance(request_id, str) or not SAFE_ID_PATTERN.fullmatch(request_id):
+        raise ValueError("request_id must contain only letters, numbers, dot, underscore, or dash")
 
-    documents = request.get("documents")
-    document_count = len(documents) if isinstance(documents, list) else 0
-    request_id = request.get("request_id", "unknown request")
-    print(f"Submitted {request_id} with {document_count} documents.")
-    print(f"Queue: {_queue_name()}")
-    print(f"Blob destination: {_container_name()}/{request.get('review_blob', DEFAULT_BLOB)}")
+    service = _blob_service_client()
+    container_name = _intake_container_name()
+    container = service.get_container_client(container_name)
+    with suppress(ResourceExistsError):
+        container.create_container()
+
+    normalized_documents: list[dict[str, Any]] = []
+    for position, document in enumerate(request.get("documents", [])):
+        if not isinstance(document, dict):
+            raise ValueError("documents must contain objects")
+        normalized = dict(document)
+        source_path_value = normalized.pop("source_path", None)
+        if source_path_value:
+            source_path = Path(source_path_value).expanduser()
+            if not source_path.is_absolute():
+                source_path = request_path.parent / source_path
+            content = source_path.read_bytes()
+            document_id = str(normalized["document_id"])
+            document_type = str(normalized["type"])
+            if not SAFE_ID_PATTERN.fullmatch(document_id):
+                raise ValueError("document_id contains unsupported characters")
+            if document_type not in {"driver_license", "signed_request"}:
+                raise ValueError("document type must be driver_license or signed_request")
+            blob_name = (
+                f"attachments/{request_id}/{document_type}/{document_id}/"
+                f"{source_path.name}"
+            )
+            content_type = {
+                ".pdf": "application/pdf",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+            }.get(source_path.suffix.lower())
+            if content_type is None:
+                raise ValueError(f"Unsupported attachment type: {source_path.suffix}")
+            container.get_blob_client(blob_name).upload_blob(
+                content,
+                overwrite=True,
+                content_settings=ContentSettings(content_type=content_type),
+                metadata={
+                    "request_id": request_id,
+                    "document_id": document_id,
+                    "source": "manual-fallback",
+                },
+            )
+            normalized.update({
+                "file_name": source_path.name,
+                "blob_name": blob_name,
+                "content_type": content_type,
+                "size": len(content),
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "status": "received",
+            })
+        normalized.setdefault("position", position)
+        normalized_documents.append(normalized)
+
+    request["documents"] = normalized_documents
+    request.setdefault("review_blob", f"reviews/{request_id}.html")
+    request.setdefault("source", {"kind": "manual_fallback"})
+    request.setdefault(
+        "idempotency_key",
+        hashlib.sha256(f"manual\0{request_id}".encode()).hexdigest(),
+    )
+    manifest_name = f"normalized/{request_id}.json"
+    try:
+        container.get_blob_client(manifest_name).upload_blob(
+            json.dumps(request, separators=(",", ":")).encode(),
+            overwrite=False,
+            content_settings=ContentSettings(
+                content_type="application/json; charset=utf-8"
+            ),
+        )
+    except ResourceExistsError as exc:
+        raise RuntimeError(
+            f"Request {request_id} was already submitted; use a new request_id."
+        ) from exc
+
+    print(f"Submitted fallback request {request_id} with {len(normalized_documents)} documents.")
+    print(f"Manifest: {container_name}/{manifest_name}")
+    print(f"Report destination: {_container_name()}/{request['review_blob']}")
 
 
 def download(blob_name: str, output_path: Path) -> None:
@@ -99,8 +157,8 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     submit_parser = subparsers.add_parser(
-        "submit",
-        help="Send a policy request to local or Azure Queue Storage.",
+        "submit-manual",
+        help="Stage local/OneDrive-synced files and create a normalized request Blob.",
     )
     submit_parser.add_argument(
         "--request",
@@ -120,10 +178,13 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _parser().parse_args()
-    if args.action == "submit":
-        submit(args.request)
+    if args.action == "submit-manual":
+        submit_manual(args.request)
         return
-    download(args.blob, args.output)
+    try:
+        download(args.blob, args.output)
+    except ResourceNotFoundError as exc:
+        raise SystemExit("The report is not available yet.") from exc
 
 
 if __name__ == "__main__":

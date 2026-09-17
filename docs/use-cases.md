@@ -1,47 +1,38 @@
 # Try variations
 
-The included request asks to add Jordan Lee to policy `AUTO-100042`.
+## Complete request
 
-| Document | Input status | Report result |
-|---|---|---|
-| Driver's license | `received` | `present` |
-| Signed request | `missing` | `missing` |
+Attach both:
 
-Run it with:
-
-```bash
-python scripts/demo.py submit
-python scripts/demo.py download
+```text
+driver_license__DOC-001__jordan-license.pdf
+signed_request__DOC-002__signed-request.pdf
 ```
 
-## Change a document status
+The report lists both required document types as present.
 
-Copy [the example request](../examples/policy-service-request.json), give it a new
-`request_id` and `review_blob`, then set a document status to:
+## Missing document
 
-- `received`: the metadata is present
-- `missing`: the reviewer must obtain the document
-- `expired`: the reviewer must obtain a current copy
+Send only the driver's license. The normalized request contains only retrieved
+attachments, and the report identifies `signed_request` as missing.
 
-Submit the copy:
+## Duplicate delivery
+
+Send the same request ID again or replay the connector callback. The deterministic
+manifest already exists, so no second review starts. Use a new request ID for a new run.
+
+## Manual or OneDrive-synced fallback
+
+Set a document's `source_path` in the example JSON to a local or OneDrive-synced path:
 
 ```bash
-python scripts/demo.py submit --request examples/my-request.json
+python scripts/demo.py submit-manual --request examples/policy-service-request.json
 ```
 
-Download its report:
+The script stages the file and creates the same normalized manifest as Outlook intake.
 
-```bash
-python scripts/demo.py download \
-  --blob reviews/<request-id>.html \
-  --output output/<request-id>.html
-```
+## Empty request
 
-## Submit no documents
-
-An empty `documents` list is valid. The report lists both required documents as missing.
-This demonstrates that the workflow can still complete when its parallel step has no
-items.
-
-Next: [How it works](how-it-works.md) | [Customize](customize.md) |
-[Deploy](deploy.md)
+The Outlook path rejects messages without non-inline attachments. For workflow-only
+testing, a manually normalized request may contain an empty `documents` list; the report
+lists both required document types as missing.

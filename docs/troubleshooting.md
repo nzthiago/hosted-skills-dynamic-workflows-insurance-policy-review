@@ -1,76 +1,67 @@
 # Troubleshooting
 
-## The queue message is not processed
+## The Outlook connection is not authorized
 
-Run `azd monitor --logs` and confirm:
+Run `azd provision` again to reopen the interactive authorization hook. Sign in with the
+dedicated mailbox account. The connection must show `Connected` before deployment
+continues.
 
-- the Function App deployed successfully
-- `POLICY_REQUEST_QUEUE` is `policy-service-requests`
-- the Function identity has Storage Queue Data Contributor
-- the request matches the included JSON example
+## Email does not trigger intake
 
-New role assignments can take a few minutes to propagate.
+Confirm:
+
+- the message reached `OUTLOOK_FOLDER_PATH`
+- the subject starts with `[POLICY-REQUEST]`
+- the message contains a non-inline attachment
+- the trigger config uses `OnNewEmailV3`
+- the Connector Extension preview bundle loaded
+
+The trigger polls. Wait at least two configured polling intervals before using the manual
+fallback.
+
+## Attachment retrieval fails
+
+The MCP config exposes only `GetAttachment_V2`. Confirm `O365_MCP_SERVER_URL` is set,
+the Function identity has a connection access policy, and the connection is authorized.
+
+Attachment names must be:
+
+```text
+<driver_license|signed_request>__<document-id>__<file-name>
+```
+
+Only PDF, JPEG, and PNG up to 10 MiB are accepted. The trigger currently includes
+attachment metadata/bodies so IDs are present, but intake ignores inline `contentBytes`
+and calls `GetAttachment_V2`.
+
+## A duplicate email produces no workflow
+
+This is expected when the request ID was already normalized. Use a new request ID for a
+new review. Connector retries race on a Blob lease and cannot create a second manifest.
 
 ## The workflow does not start
 
-Open the dashboard URL returned by:
+Check the `policy-intake/normalized/` prefix and open:
 
 ```bash
 azd env get-value DURABLE_TASK_DASHBOARD_URL
 ```
 
-Check that the app's `TASKHUB_NAME` matches the deployed task hub and that the Function
-identity has Durable Task Data Contributor on that task hub.
+The hosted skill uses a Blob trigger, then loads the normalized manifest with
+`load_normalized_policy_request`.
 
 ## The report is missing
 
-The queue trigger returns before the workflow finishes. In the dashboard, wait for
-`publish_driver_review_report`.
+Wait for `publish_driver_review_report`. Confirm `POLICY_REVIEW_STORAGE_URL` and
+`POLICY_REVIEW_CONTAINER`.
 
-Also confirm `POLICY_REVIEW_STORAGE_URL` and `POLICY_REVIEW_CONTAINER` match the
-`azd` outputs.
+## Live connector testing is blocked
 
-## The demo returns 403
-
-Run `azd auth login` again and reload the four Storage environment variables shown in
-the deployment guide. Role assignments can take a few minutes to become effective.
-
-## A custom report cannot be downloaded
-
-Pass the Blob path used in the request:
+Use the fallback:
 
 ```bash
-python scripts/demo.py download \
-  --blob reviews/<request-id>.html \
-  --output output/<request-id>.html
+python scripts/demo.py submit-manual --request examples/policy-service-request.json
 ```
 
-## Local imports fail
-
-Activate the repository environment before starting Functions:
-
-```bash
-cd src
-source ../.venv/bin/activate
-func start
-```
-
-## The local scheduler cannot connect
-
-Start Docker and run the emulator with the expected task hub:
-
-```bash
-docker run --rm --name dts-emulator \
-  -e DTS_TASK_HUB_NAMES=policyreviews \
-  -p 8080:8080 -p 8082:8082 \
-  mcr.microsoft.com/dts/dts-emulator:latest
-```
-
-The dashboard is at <http://localhost:8082>.
-
-## The report has no decision
-
-That is expected. The sample prepares document metadata for review. An authorized
-person must verify the actual documents and decide whether to update the policy.
-
-Next: [Deploy](deploy.md) | [How it works](how-it-works.md)
+The example stages a safe placeholder PDF. A OneDrive-synced file path can be supplied
+through `source_path`.

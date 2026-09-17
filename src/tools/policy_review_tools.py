@@ -1,6 +1,7 @@
 """Workflow tools for the add-driver policy review."""
 
 import html
+import json
 import logging
 import os
 from contextlib import suppress
@@ -14,7 +15,51 @@ from azure_functions_agents import workflow_tool
 logger = logging.getLogger(__name__)
 
 REQUIRED_DOCUMENTS = ("driver_license", "signed_request")
+ALLOWED_DOCUMENT_STATUSES = frozenset({"received", "missing", "expired"})
 DEFAULT_CONTAINER = "policy-review-packets"
+DEFAULT_INTAKE_CONTAINER = "policy-intake"
+
+
+def _blob_service() -> BlobServiceClient:
+    if connection_string := os.getenv("AzureWebJobsStorage"):  # noqa: SIM112
+        return BlobServiceClient.from_connection_string(connection_string)
+    return BlobServiceClient(
+        account_url=os.environ["POLICY_REVIEW_STORAGE_URL"],
+        credential=DefaultAzureCredential(
+            managed_identity_client_id=os.getenv("AZURE_CLIENT_ID")
+        ),
+    )
+
+
+@workflow_tool(
+    description=(
+        "Load one normalized policy request from the intake Blob trigger. "
+        "Args: {blob_name: <trigger Blob name>}. Returns the JSON request object."
+    )
+)
+def load_normalized_policy_request(args: dict[str, Any]) -> dict[str, Any]:
+    blob_name = str(args["blob_name"])
+    prefix = f"{DEFAULT_INTAKE_CONTAINER}/"
+    if blob_name.startswith(prefix):
+        blob_name = blob_name[len(prefix) :]
+    if (
+        not blob_name.startswith("normalized/")
+        or not blob_name.endswith(".json")
+        or ".." in blob_name
+        or "\\" in blob_name
+    ):
+        raise ValueError("Expected a normalized policy-request Blob.")
+    container_name = os.getenv("POLICY_INTAKE_CONTAINER", DEFAULT_INTAKE_CONTAINER)
+    data = (
+        _blob_service()
+        .get_blob_client(container=container_name, blob=blob_name)
+        .download_blob()
+        .readall()
+    )
+    request = json.loads(data)
+    if not isinstance(request, dict):
+        raise ValueError("Normalized policy request must be a JSON object.")
+    return request
 
 
 @workflow_tool(
@@ -25,14 +70,55 @@ DEFAULT_CONTAINER = "policy-review-packets"
 )
 def validate_add_driver_request(args: dict[str, Any]) -> dict[str, Any]:
     request = args["request"]
-    request_id = request["request_id"]
+    if not isinstance(request, dict):
+        raise ValueError("request must be an object")
+    request_id = request.get("request_id")
+    policy_id = request.get("policy_id")
+    driver_name = request.get("driver_name")
+    documents = request.get("documents", [])
+    review_blob = request.get("review_blob", f"reviews/{request_id}.html")
+    for field_name, value in (
+        ("request_id", request_id),
+        ("policy_id", policy_id),
+        ("driver_name", driver_name),
+    ):
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{field_name} must be a non-empty string")
+    if not isinstance(documents, list):
+        raise ValueError("documents must be an array")
+    if (
+        not isinstance(review_blob, str)
+        or not review_blob.startswith("reviews/")
+        or not review_blob.endswith(".html")
+        or ".." in review_blob
+        or "\\" in review_blob
+    ):
+        raise ValueError("review_blob must be a safe reviews/*.html Blob name")
+
+    for document in documents:
+        if not isinstance(document, dict):
+            raise ValueError("documents must contain objects")
+        for field_name in ("document_id", "type", "file_name"):
+            value = document.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"document {field_name} must be a non-empty string")
+        if document.get("status") not in ALLOWED_DOCUMENT_STATUSES:
+            raise ValueError("document status must be received, missing, or expired")
+        blob_name = document.get("blob_name")
+        if document["status"] == "received" and (
+            not isinstance(blob_name, str)
+            or not blob_name.startswith("attachments/")
+            or ".." in blob_name
+            or "\\" in blob_name
+        ):
+            raise ValueError("received documents must reference a safe staged attachment Blob")
 
     return {
         "request_id": request_id,
-        "policy_id": request["policy_id"],
-        "driver_name": request["driver_name"],
-        "documents": request.get("documents", []),
-        "review_blob": request.get("review_blob", f"reviews/{request_id}.html"),
+        "policy_id": policy_id,
+        "driver_name": driver_name,
+        "documents": documents,
+        "review_blob": review_blob,
     }
 
 
@@ -133,16 +219,7 @@ def build_driver_review_report(args: dict[str, Any]) -> dict[str, Any]:
 def publish_driver_review_report(args: dict[str, Any]) -> dict[str, Any]:
     report = args["report"]
     container_name = os.getenv("POLICY_REVIEW_CONTAINER", DEFAULT_CONTAINER)
-
-    if connection_string := os.getenv("AzureWebJobsStorage"):  # noqa: SIM112
-        service = BlobServiceClient.from_connection_string(connection_string)
-    else:
-        service = BlobServiceClient(
-            account_url=os.environ["POLICY_REVIEW_STORAGE_URL"],
-            credential=DefaultAzureCredential(
-                managed_identity_client_id=os.getenv("AZURE_CLIENT_ID")
-            ),
-        )
+    service = _blob_service()
 
     container = service.get_container_client(container_name)
     with suppress(ResourceExistsError):

@@ -6,14 +6,7 @@
     {
       "document_id": "DOC-001",
       "type": "driver_license",
-      "file_name": "jordan-lee-license.pdf",
-      "status": "received"
-    },
-    {
-      "document_id": "DOC-002",
-      "type": "signed_request",
-      "file_name": "signed-request.pdf",
-      "status": "missing"
+      "source_path": "documents/jordan-lee-license.pdf"
     }
   ],
   "review_blob": "reviews/PSR-2026-00042.html"

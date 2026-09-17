@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+
+set -eu
+
+resource_group=$(azd env get-value AZURE_RESOURCE_GROUP_NAME)
+gateway_name=$(azd env get-value O365_CONNECTOR_GATEWAY_NAME)
+connection_id=$(azd env get-value O365_CONNECTION_ID)
+subscription_id=$(az account show --query id -o tsv)
+
+status=$(az resource show --ids "$connection_id" \
+    --query properties.overallStatus -o tsv 2>/dev/null || true)
+if [ "$status" = "Connected" ]; then
+    echo "Office 365 Outlook connection is already authorized."
+    exit 0
+fi
+
+portal_url="https://connectors.azure.com/$subscription_id/$resource_group/$gateway_name/overview"
+echo "Authorize the Office 365 Outlook connection with the dedicated intake mailbox."
+echo "Connector Namespace portal: $portal_url"
+
+if command -v open >/dev/null 2>&1; then
+    open "$portal_url" >/dev/null 2>&1 || true
+elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$portal_url" >/dev/null 2>&1 || true
+fi
+
+printf "Press Enter after the connection shows Connected in the portal: "
+read -r _
+
+status=$(az resource show --ids "$connection_id" \
+    --query properties.overallStatus -o tsv 2>/dev/null || true)
+if [ "$status" != "Connected" ]; then
+    echo "Office 365 Outlook connection is not Connected. Re-run 'azd provision' after authorization." >&2
+    exit 1
+fi
+
+echo "Office 365 Outlook connection is authorized."

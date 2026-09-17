@@ -3,7 +3,7 @@ param location string = resourceGroup().location
 param tags object = {}
 param deploymentContainerName string
 param reportContainerName string
-param requestQueueName string
+param intakeContainerName string
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: name
@@ -59,19 +59,14 @@ resource reportContainer 'Microsoft.Storage/storageAccounts/blobServices/contain
   }
 }
 
-resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-01' = {
-  parent: storageAccount
-  name: 'default'
-  properties: {}
-}
-
-resource requestQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = {
-  parent: queueService
-  name: requestQueueName
-  properties: {}
+resource intakeContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: intakeContainerName
+  properties: {
+    publicAccess: 'None'
+  }
 }
 
 output name string = storageAccount.name
 output resourceId string = storageAccount.id
 output blobEndpoint string = storageAccount.properties.primaryEndpoints.blob
-output queueEndpoint string = storageAccount.properties.primaryEndpoints.queue

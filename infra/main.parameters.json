@@ -9,6 +9,7 @@
     "foundryModelVersion": { "value": "${FOUNDRY_MODEL_VERSION=2025-04-14}" },
     "foundryDeploymentCapacity": { "value": "${FOUNDRY_DEPLOYMENT_CAPACITY=10}" },
     "dtsSkuName": { "value": "${DTS_SKU_NAME=Consumption}" },
-    "dtsDedicatedCapacity": { "value": "${DTS_DEDICATED_CAPACITY=1}" }
+    "dtsDedicatedCapacity": { "value": "${DTS_DEDICATED_CAPACITY=1}" },
+    "outlookFolderPath": { "value": "${OUTLOOK_FOLDER_PATH=Inbox/Policy Review}" }
   }
 }

@@ -38,6 +38,9 @@ param dtsSkuName string = 'Consumption'
 @description('Durable Task Scheduler capacity when the Dedicated SKU is selected.')
 param dtsDedicatedCapacity int = 1
 
+@description('Office 365 Outlook folder ID or connector-recognized path used for policy intake.')
+param outlookFolderPath string = 'Inbox/Policy Review'
+
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = {
   'azd-env-name': environmentName
@@ -51,10 +54,12 @@ var applicationInsightsName = 'appi-policy-${resourceToken}'
 var foundryAccountName = 'aipolicy${resourceToken}'
 var foundryProjectName = '${foundryAccountName}-project'
 var schedulerName = 'dts-policy-${resourceToken}'
+var connectorGatewayName = 'cgw-policy-${resourceToken}'
+var outlookConnectionName = 'office365-outlook'
 var taskHubName = 'policyreviews'
 var deploymentContainerName = 'app-package-${resourceToken}'
 var reportContainerName = 'policy-review-packets'
-var requestQueueName = 'policy-service-requests'
+var intakeContainerName = 'policy-intake'
 var deployerPrincipalId = deployer().objectId
 
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -82,7 +87,7 @@ module storage './app/storage.bicep' = {
     tags: tags
     deploymentContainerName: deploymentContainerName
     reportContainerName: reportContainerName
-    requestQueueName: requestQueueName
+    intakeContainerName: intakeContainerName
   }
 }
 
@@ -167,6 +172,20 @@ module rbac './app/rbac.bicep' = {
   }
 }
 
+module outlookConnector './app/connector-gateway.bicep' = {
+  name: 'outlook-connector'
+  scope: resourceGroup
+  params: {
+    connectorGatewayName: connectorGatewayName
+    connectionName: outlookConnectionName
+    location: location
+    tags: tags
+    managedIdentityPrincipalId: identity.outputs.principalId
+    deployerPrincipalId: deployerPrincipalId
+    tenantId: tenant().tenantId
+  }
+}
+
 module api './app/api.bicep' = {
   name: 'api'
   scope: resourceGroup
@@ -192,6 +211,9 @@ module api './app/api.bicep' = {
       TASKHUB_NAME: dts.outputs.taskHubName
       POLICY_REVIEW_STORAGE_URL: storage.outputs.blobEndpoint
       POLICY_REVIEW_CONTAINER: reportContainerName
+      POLICY_INTAKE_CONTAINER: intakeContainerName
+      O365_MCP_SERVER_URL: outlookConnector.outputs.mcpEndpointUrl
+      O365_MCP_CLIENT_ID: identity.outputs.clientId
       ENABLE_MULTIPLATFORM_BUILD: 'true'
     }
   }
@@ -203,9 +225,13 @@ output AZURE_FUNCTION_NAME string = api.outputs.name
 output AZURE_CLIENT_ID string = identity.outputs.clientId
 output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.name
 output POLICY_REVIEW_STORAGE_URL string = storage.outputs.blobEndpoint
-output POLICY_REVIEW_QUEUE_URL string = storage.outputs.queueEndpoint
 output POLICY_REVIEW_CONTAINER string = reportContainerName
-output POLICY_REQUEST_QUEUE string = requestQueueName
+output POLICY_INTAKE_CONTAINER string = intakeContainerName
+output O365_CONNECTOR_GATEWAY_NAME string = outlookConnector.outputs.connectorGatewayName
+output O365_CONNECTION_NAME string = outlookConnector.outputs.connectionName
+output O365_CONNECTION_ID string = outlookConnector.outputs.connectionId
+output O365_MCP_SERVER_URL string = outlookConnector.outputs.mcpEndpointUrl
+output OUTLOOK_FOLDER_PATH string = outlookFolderPath
 output DURABLE_TASK_SCHEDULER_NAME string = dts.outputs.name
 output DURABLE_TASK_HUB_NAME string = dts.outputs.taskHubName
 output DURABLE_TASK_DASHBOARD_URL string = dts.outputs.dashboardUrl

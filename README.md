@@ -3,130 +3,141 @@
 [![Python](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/downloads/)
 
 A markdown-first [Azure Functions hosted skill](https://azure.github.io/azure-functions-agents-runtime/)
-that creates a durable workflow to review the documents required to add a driver to
-an auto insurance policy. Its trigger and instructions live in
-[src/main.agent.md](src/main.agent.md), and Azure Functions handles execution and
-scale-to-zero.
+that turns insurance-policy request emails into durable, human-reviewed document packets.
 
 ## What it does
 
-- 📥 **Starts from an event:** an add-driver request arrives on an Azure Storage queue.
-- 🔀 **Plans durable work:** the hosted skill creates a workflow for the request.
-- 📄 **Checks documents in parallel:** one activity runs for each submitted document.
-- 📝 **Builds a review:** the results are combined into an HTML report in Blob Storage.
-- 👤 **Keeps the decision human-owned:** the sample never updates the policy or makes a
-  policy decision.
+- Watches a dedicated Office 365 Outlook mailbox folder through a Connector Namespace trigger.
+- Validates a strict subject and attachment naming convention.
+- Calls the allow-listed `GetAttachment_V2` connector operation for every attachment.
+- Stages binary files and one normalized request manifest in Blob Storage.
+- Runs validate → parallel inspect → build → publish as a Dynamic Workflow.
+- Produces an HTML report while keeping every policy decision human-owned.
+
+The sample records file metadata and Blob references. It does not verify document
+authenticity or update a policy.
+
+## Email contract
+
+Send mail to the account that authorizes the Office 365 Outlook connection. Route it to
+the configured folder, by mailbox rule if necessary.
+
+Subject:
+
+```text
+[POLICY-REQUEST] PSR-2026-00042 | AUTO-100042 | Jordan Lee
+```
+
+Non-inline attachment names:
+
+```text
+driver_license__DOC-001__jordan-lee-license.pdf
+signed_request__DOC-002__signed-request.pdf
+```
+
+Only PDF, JPEG, and PNG files up to 10 MiB each are accepted. Request IDs and document
+IDs must be unique. Inline signature images are ignored.
 
 ## Prerequisites
 
-- An [Azure subscription](https://azure.microsoft.com/free/)
-- [uv](https://docs.astral.sh/uv/)
-- [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- Azure subscription
+- Python 3.13 and [uv](https://docs.astral.sh/uv/)
+- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
+- Azure CLI
+- Office 365 account for the dedicated intake mailbox
 
-## Quickstart
+## Deploy and authorize
 
-Deploy the sample:
+Choose the mailbox folder before provisioning:
 
 ```bash
 azd auth login
+azd env set OUTLOOK_FOLDER_PATH "Inbox/Policy Review"
 azd up
 ```
 
-Load the deployed Storage settings:
+`postprovision` opens the Connector Namespace portal. Authorization remains interactive:
+sign in as the dedicated mailbox owner and confirm the connection reaches `Connected`.
+After application deployment, `postdeploy` creates the `OnNewEmailV3` trigger config
+without printing its callback key.
 
-```bash
-export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
-export POLICY_REVIEW_QUEUE_URL="$(azd env get-value POLICY_REVIEW_QUEUE_URL)"
-export POLICY_REVIEW_CONTAINER="$(azd env get-value POLICY_REVIEW_CONTAINER)"
-export POLICY_REQUEST_QUEUE="$(azd env get-value POLICY_REQUEST_QUEUE)"
-```
+The folder value is connector-defined. Validate the folder ID/path in the Connector
+Namespace portal before a live demo; the default is `Inbox/Policy Review`.
 
-Submit the included request:
+## Run the email demo
 
-```bash
-uv run --with-requirements requirements.txt python scripts/demo.py submit
-```
+1. Send a uniquely numbered request email that follows the contract.
+2. Follow the run in the Durable Task Scheduler dashboard:
 
-Follow the run in the Durable Task Scheduler dashboard:
+   ```bash
+   azd env get-value DURABLE_TASK_DASHBOARD_URL
+   ```
 
-```bash
-azd env get-value DURABLE_TASK_DASHBOARD_URL
-```
+3. Load the report settings and download the result:
 
-After `publish_driver_review_report` completes, download the report:
-
-```bash
-uv run --with-requirements requirements.txt python scripts/demo.py download
-```
-
-You should see:
-
-| Request | Document results | Decision |
-|---|---|---|
-| Add Jordan Lee to `AUTO-100042` | Driver's license present; signed request missing | Human review required |
+   ```bash
+   export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
+   export POLICY_REVIEW_CONTAINER="$(azd env get-value POLICY_REVIEW_CONTAINER)"
+   uv run --with-requirements requirements.txt python scripts/demo.py download
+   ```
 
 The report is saved to `output/PSR-2026-00042.html`.
 
-Clean up with `azd down --purge`.
+## Manual/OneDrive fallback
 
-## Run it locally
+If the Outlook polling trigger is delayed, use the normalized-request fallback. The
+example references a local file; replace `source_path` with a path in a locally synced
+OneDrive folder when desired.
 
-Install [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite),
-[Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local),
-Docker, and Azure CLI. Copy the settings template and set the model endpoint and
-deployment:
+```bash
+export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
+export POLICY_INTAKE_CONTAINER="$(azd env get-value POLICY_INTAKE_CONTAINER)"
+uv run --with-requirements requirements.txt \
+  python scripts/demo.py submit-manual \
+  --request examples/policy-service-request.json
+```
+
+The fallback stages files and creates the same `policy-intake/normalized/<request>.json`
+manifest consumed by the hosted skill. Reusing a request ID is rejected.
+
+## Local development
+
+Copy the settings template, populate the Foundry and deployed Connector MCP values, then
+start Azurite, the Durable Task Scheduler emulator, and Functions:
 
 ```bash
 cp src/local.settings.template.json src/local.settings.json
 az login
-```
-
-Run each command in a separate terminal:
-
-```bash
-azurite --silent --skipApiVersionCheck --location .azurite       # terminal A
+azurite --silent --skipApiVersionCheck --location .azurite
 docker run --rm --name dts-emulator \
   -e DTS_TASK_HUB_NAMES=policyreviews \
   -p 8080:8080 -p 8082:8082 \
-  mcr.microsoft.com/dts/dts-emulator:latest                     # terminal B
-cd src && uv run --with-requirements requirements.txt func start # terminal C
-uv run --with-requirements requirements.txt python scripts/demo.py submit  # terminal D
+  mcr.microsoft.com/dts/dts-emulator:latest
+cd src && uv run --with-requirements requirements.txt func start
 ```
 
-Open <http://localhost:8082> to follow the workflow, then download the report:
+Connector callbacks normally require a deployed Function App. Test the local workflow
+with `submit-manual`.
 
-```bash
-uv run --with-requirements requirements.txt python scripts/demo.py download
-```
+## Live-demo reliability
 
-The model call still uses Azure. For setup and Windows help, see
-[Troubleshooting](docs/troubleshooting.md).
+- Authorize the connector and verify the folder before the session.
+- Use a mailbox rule so matching mail reaches the watched folder automatically.
+- Use a new request ID for every rehearsal; duplicates intentionally produce no new manifest.
+- Keep attachments small and avoid `.msg`, cloud-reference, encrypted, and inline-only files.
+- Send the email at least two polling intervals before the workflow walkthrough.
+- Keep the manual/OneDrive-synced fallback request ready in another terminal.
+- Confirm the DTS dashboard and Blob report download before presenting.
 
 ## How it works
 
-```mermaid
-flowchart LR
-    request([add-driver request])
-    queue[[policy-service-requests]]
-    skill{{Add Driver Review<br/>hosted skill}}
-    scheduler[(Durable Task Scheduler)]
-    validate[validate request]
-    inspect[inspect documents<br/>in parallel]
-    report[build HTML review]
-    blob[(policy-review-packets)]
-    reviewer([human reviewer])
+Outlook Connector trigger → `OutlookPolicyIntake` → `GetAttachment_V2` → staged attachment
+Blobs → normalized manifest Blob → hosted skill → Durable Task Scheduler → HTML report Blob.
 
-    request --> queue
-    queue -->|queue trigger| skill
-    skill -->|start workflow| scheduler
-    scheduler --> validate --> inspect --> report --> blob --> reviewer
-```
-
-The runtime discovers [src/main.agent.md](src/main.agent.md). Its front matter defines
-the queue trigger and enables workflows; its body describes the four steps. The Python
-tools in [src/tools/policy_review_tools.py](src/tools/policy_review_tools.py) validate
-the request, inspect document metadata, build the report, and publish it using managed
-identity.
+The trigger includes attachment metadata so attachment IDs are available, but the intake
+code discards any trigger-provided `contentBytes` and explicitly retrieves each file.
+A deterministic request manifest and a Blob lease prevent connector retries from starting
+another workflow for the same request ID. Report publication remains overwrite-safe.
 
 [How it works](docs/how-it-works.md) ·
 [Use cases](docs/use-cases.md) ·
@@ -134,10 +145,4 @@ identity.
 [Deploy](docs/deploy.md) ·
 [Troubleshooting](docs/troubleshooting.md)
 
-## Learn more
-
-- [Azure Functions hosted skills](https://azure.github.io/azure-functions-agents-runtime/)
-- [Dynamic Workflows](https://azure.github.io/azure-functions-agents-runtime/workflows/)
-- [Azure Functions Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
-- [Durable Task Scheduler](https://learn.microsoft.com/azure/azure-functions/durable/durable-task-scheduler/durable-task-scheduler)
-- [uv](https://docs.astral.sh/uv/)
+Clean up with `azd down --purge`.
