@@ -126,7 +126,7 @@ def _request(
 ) -> dict[str, Any] | None:
     headers = {
         "Accept": "application/json",
-        "Authorization": f"Bearer {token}",
+        "Authorization": "Bearer " + token,
         "OData-MaxVersion": "4.0",
         "OData-Version": "4.0",
         "If-None-Match": "null",

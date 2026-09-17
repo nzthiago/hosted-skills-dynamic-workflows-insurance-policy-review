@@ -76,6 +76,38 @@ def test_environment_resolution_rejects_unknown_id() -> None:
         )
 
 
+def test_dataverse_request_uses_bearer_token(monkeypatch) -> None:
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def read(self) -> bytes:
+            return b"{}"
+
+    def fake_urlopen(request, *, timeout):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(setup_dataverse_schema.urllib.request, "urlopen", fake_urlopen)
+
+    assert setup_dataverse_schema._request(
+        "https://example.crm.dynamics.com",
+        "pac-access-token",
+        "GET",
+        "WhoAmI",
+    ) == {}
+    assert captured["request"].get_header("Authorization") == (
+        "Bearer pac-access-token"
+    )
+    assert captured["timeout"] == 60
+
+
 def test_verify_only_fails_when_publisher_is_missing(monkeypatch) -> None:
     schema = json.loads(SCHEMA_PATH.read_text())
     monkeypatch.setattr(setup_dataverse_schema, "_find", lambda *args: None)
