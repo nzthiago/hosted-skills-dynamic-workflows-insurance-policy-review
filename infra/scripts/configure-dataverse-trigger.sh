@@ -32,6 +32,17 @@ if [ -z "$environment_url" ]; then
     exit 1
 fi
 
+function_host=$(az resource show \
+    -g "$resource_group" \
+    -n "$function_name" \
+    --resource-type Microsoft.Web/sites \
+    --query properties.defaultHostName \
+    -o tsv)
+if [ -z "$function_host" ]; then
+    echo "Failed to resolve the Function App hostname." >&2
+    exit 1
+fi
+
 connector_key=$(az functionapp keys list \
     -g "$resource_group" \
     -n "$function_name" \
@@ -44,7 +55,7 @@ fi
 
 encoded_key=$(CONNECTOR_KEY="$connector_key" python3 -c \
     'import os, urllib.parse; print(urllib.parse.quote(os.environ["CONNECTOR_KEY"], safe=""))')
-callback_url="https://$function_name.azurewebsites.net/runtime/webhooks/connector?functionName=DataversePolicyIntake&code=$encoded_key"
+callback_url="https://$function_host/runtime/webhooks/connector?functionName=DataversePolicyIntake&code=$encoded_key"
 
 az deployment group create \
     -g "$resource_group" \

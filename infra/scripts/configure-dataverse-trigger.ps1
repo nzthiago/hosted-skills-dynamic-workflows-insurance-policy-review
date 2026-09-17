@@ -39,6 +39,16 @@ if ([string]::IsNullOrWhiteSpace($environmentUrl)) {
     throw "Set DATAVERSE_ENVIRONMENT_URL, DATAVERSE_ENVIRONMENT_ID, or DATAVERSE_ENVIRONMENT_NAME before deployment."
 }
 
+$functionHost = az resource show `
+    -g $resourceGroup `
+    -n $functionName `
+    --resource-type Microsoft.Web/sites `
+    --query properties.defaultHostName `
+    -o tsv
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($functionHost)) {
+    throw "Failed to resolve the Function App hostname."
+}
+
 $connectorKey = az functionapp keys list `
     -g $resourceGroup `
     -n $functionName `
@@ -49,7 +59,7 @@ if ([string]::IsNullOrWhiteSpace($connectorKey)) {
 }
 
 $encodedKey = [uri]::EscapeDataString($connectorKey)
-$callbackUrl = "https://$functionName.azurewebsites.net/runtime/webhooks/connector?functionName=DataversePolicyIntake&code=$encodedKey"
+$callbackUrl = "https://$functionHost/runtime/webhooks/connector?functionName=DataversePolicyIntake&code=$encodedKey"
 
 az deployment group create `
     -g $resourceGroup `

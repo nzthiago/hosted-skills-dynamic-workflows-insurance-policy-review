@@ -60,6 +60,108 @@ def test_dataverse_environment_id_is_local_configuration() -> None:
     assert ".azure/" in gitignore
 
 
+def test_dataverse_trigger_resolves_function_default_hostname() -> None:
+    posix = (ROOT / "infra/scripts/configure-dataverse-trigger.sh").read_text()
+    powershell = (
+        ROOT / "infra/scripts/configure-dataverse-trigger.ps1"
+    ).read_text()
+    for script in (posix, powershell):
+        assert "properties.defaultHostName" in script
+        assert "Microsoft.Web/sites" in script
+        assert "Failed to resolve the Function App hostname." in script
+        assert "https://$functionName.azurewebsites.net" not in script
+
+
+def test_dataverse_trigger_bash_uses_resolved_function_hostname() -> None:
+    script = ROOT / "infra/scripts/configure-dataverse-trigger.sh"
+    command = """
+azd() {
+    if [ "$1 $2" = "env set" ]; then
+        return 0
+    fi
+    case "$3" in
+        AZURE_RESOURCE_GROUP_NAME) printf 'rg-test' ;;
+        AZURE_FUNCTION_NAME) printf 'func-test' ;;
+        DATAVERSE_CONNECTOR_GATEWAY_NAME) printf 'gateway-test' ;;
+        DATAVERSE_CONNECTION_NAME) printf 'connection-test' ;;
+        DATAVERSE_ENVIRONMENT_URL) printf 'https://org.crm.dynamics.com' ;;
+        DATAVERSE_ENVIRONMENT_ID|DATAVERSE_ENVIRONMENT_NAME) printf '' ;;
+        DATAVERSE_TABLE_NAME) printf 'ipr_policyservicerequests' ;;
+        *) return 1 ;;
+    esac
+}
+az() {
+    case "$1 $2 $3" in
+        "resource show -g")
+            printf 'func-test.custom.azurewebsites.net'
+            ;;
+        "functionapp keys list")
+            printf 'connector-key'
+            ;;
+        "deployment group create")
+            printf '%s\n' "$*" >&2
+            ;;
+        *)
+            printf 'unexpected az command: %s\n' "$*" >&2
+            return 98
+            ;;
+    esac
+}
+. "$1"
+"""
+    result = subprocess.run(
+        ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert (
+        "callbackUrl=https://func-test.custom.azurewebsites.net/runtime/webhooks/"
+        "connector?functionName=DataversePolicyIntake&code=connector-key"
+    ) in result.stderr
+    assert "https://func-test.azurewebsites.net" not in result.stderr
+
+
+def test_dataverse_trigger_bash_rejects_missing_function_hostname() -> None:
+    script = ROOT / "infra/scripts/configure-dataverse-trigger.sh"
+    command = """
+azd() {
+    case "$3" in
+        AZURE_RESOURCE_GROUP_NAME) printf 'rg-test' ;;
+        AZURE_FUNCTION_NAME) printf 'func-test' ;;
+        DATAVERSE_CONNECTOR_GATEWAY_NAME) printf 'gateway-test' ;;
+        DATAVERSE_CONNECTION_NAME) printf 'connection-test' ;;
+        DATAVERSE_ENVIRONMENT_URL) printf 'https://org.crm.dynamics.com' ;;
+        DATAVERSE_ENVIRONMENT_ID|DATAVERSE_ENVIRONMENT_NAME) printf '' ;;
+        DATAVERSE_TABLE_NAME) printf 'ipr_policyservicerequests' ;;
+        *) return 1 ;;
+    esac
+}
+az() {
+    case "$1 $2 $3" in
+        "resource show -g") printf '' ;;
+        *)
+            printf 'az must not configure a trigger without a hostname\n' >&2
+            return 99
+            ;;
+    esac
+}
+. "$1"
+"""
+    result = subprocess.run(
+        ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    assert "Failed to resolve the Function App hostname." in result.stderr
+    assert "az must not configure" not in result.stderr
+
+
 def test_outlook_fallback_is_allow_listed_and_optional() -> None:
     requirements = (ROOT / "src/requirements.txt").read_text()
     gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()
