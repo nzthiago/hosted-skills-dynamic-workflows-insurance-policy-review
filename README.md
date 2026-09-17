@@ -107,6 +107,9 @@ After application deployment, `postdeploy` creates only the proven
 `GetOnNewItems_V2` created-row trigger. It uses a five-minute polling interval and does
 not claim update or delete support. The broader `SubscribeWebhookTrigger` is intentionally
 not configured because Connector Namespace trigger creation is not currently proven.
+The same hook creates or updates an Event Grid subscription that forwards only
+`BlobCreated` events under `policy-intake/normalized/` to the `main` Function. Flex
+Consumption requires this Event Grid source for Blob triggers.
 
 ## Optional Outlook fallback
 

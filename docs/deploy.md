@@ -60,7 +60,10 @@ connection. Dataverse does not use connector actions or an MCP server.
 The `postprovision` hook opens `connectors.azure.com` for interactive Dataverse OAuth.
 The `postdeploy` hook resolves the environment URL, obtains the `connector_extension`
 system key, and creates a five-minute `GetOnNewItems_V2` trigger without printing the
-callback URL.
+callback URL. It also idempotently creates or updates an Event Grid subscription from
+the storage account to the `main` Function, filtered to `Microsoft.Storage.BlobCreated`
+events whose subject begins with
+`/blobServices/default/containers/policy-intake/blobs/normalized/`.
 
 ## Enable Outlook fallback
 

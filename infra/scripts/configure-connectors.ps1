@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $outlookEnabled = azd env get-value ENABLE_OUTLOOK_FALLBACK 2>$null
 & ./infra/scripts/disable-outlook-trigger-if-needed.ps1
 
+& ./infra/scripts/configure-eventgrid-blob-trigger.ps1
 & ./infra/scripts/configure-dataverse-trigger.ps1
 
 if ($outlookEnabled -eq 'true') {

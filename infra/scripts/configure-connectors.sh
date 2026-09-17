@@ -5,6 +5,7 @@ set -eu
 outlook_enabled=$(azd env get-value ENABLE_OUTLOOK_FALLBACK 2>/dev/null || true)
 ./infra/scripts/disable-outlook-trigger-if-needed.sh
 
+./infra/scripts/configure-eventgrid-blob-trigger.sh
 ./infra/scripts/configure-dataverse-trigger.sh
 
 if [ "$outlook_enabled" = "true" ]; then

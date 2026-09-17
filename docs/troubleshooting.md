@@ -19,6 +19,14 @@ device-code authentication; use the Azure CLI path in that case.
 The script reports missing or incompatible schema components and never logs access
 tokens from either authentication source.
 
+## A normalized manifest does not start the workflow
+
+Flex Consumption requires Event Grid delivery for Blob triggers. Re-run `azd deploy api`
+so the postdeploy hook creates or updates `policy-intake-normalized-main`. The subscription
+must target the `main` Function, include only `Microsoft.Storage.BlobCreated`, and use the
+subject prefix
+`/blobServices/default/containers/policy-intake/blobs/normalized/`.
+
 If environment resolution fails, confirm Azure CLI is signed in and that Global
 Discovery returns the ID. Use `--environment-url` only when the organization URL is
 already known.

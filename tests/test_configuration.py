@@ -81,19 +81,99 @@ def test_both_connector_functions_are_registered() -> None:
 def test_combined_hooks_keep_dataverse_primary() -> None:
     azure_yaml = (ROOT / "azure.yaml").read_text()
     configure = (ROOT / "infra/scripts/configure-connectors.sh").read_text()
+    configure_powershell = (
+        ROOT / "infra/scripts/configure-connectors.ps1"
+    ).read_text()
     disable = (ROOT / "infra/scripts/disable-outlook-trigger-if-needed.sh").read_text()
+    eventgrid = (
+        ROOT / "infra/scripts/configure-eventgrid-blob-trigger.sh"
+    ).read_text()
+    eventgrid_powershell = (
+        ROOT / "infra/scripts/configure-eventgrid-blob-trigger.ps1"
+    ).read_text()
     assert "configure-connectors.sh" in azure_yaml
     assert "preprovision:" in azure_yaml
     assert "disable-outlook-trigger-if-needed.sh" in azure_yaml
     assert configure.index("disable-outlook-trigger-if-needed.sh") < configure.index(
+        "configure-eventgrid-blob-trigger.sh"
+    )
+    assert configure.index("configure-eventgrid-blob-trigger.sh") < configure.index(
         "configure-dataverse-trigger.sh"
     )
     assert configure.index("configure-dataverse-trigger.sh") < configure.index(
         "configure-outlook-trigger.sh"
     )
+    assert (
+        configure_powershell.index("configure-eventgrid-blob-trigger.ps1")
+        < configure_powershell.index("configure-dataverse-trigger.ps1")
+    )
     assert 'if [ "$outlook_enabled" = "true" ]' in configure
     assert "office365-policy-request-email" in disable
     assert "az resource delete" in disable
+    for script in (eventgrid, eventgrid_powershell):
+        assert "policy-intake-normalized-main" in script
+        assert "Microsoft.Storage.BlobCreated" in script
+        assert "BlobDeleted" not in script
+        assert "/blobs/normalized/" in script
+        assert "azurefunction" in script
+        assert "/functions/main" in script
+        assert "event-subscription show" in script
+        assert "update" in script
+        assert "create" in script
+
+
+def test_eventgrid_bash_creates_filtered_azure_function_subscription() -> None:
+    script = ROOT / "infra/scripts/configure-eventgrid-blob-trigger.sh"
+    command = """
+azd() {
+    case "$3" in
+        AZURE_RESOURCE_GROUP_NAME) printf 'rg-test' ;;
+        AZURE_FUNCTION_NAME) printf 'func-test' ;;
+        AZURE_STORAGE_ACCOUNT_NAME) printf 'sttest' ;;
+        POLICY_INTAKE_CONTAINER) printf 'policy-intake' ;;
+        *) return 1 ;;
+    esac
+}
+az() {
+    case "$1 $2 $3" in
+        "storage account show")
+            printf '/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Storage/storageAccounts/sttest'
+            ;;
+        "resource show -g")
+            printf '/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Web/sites/func-test'
+            ;;
+        "eventgrid event-subscription show")
+            return 1
+            ;;
+        "eventgrid event-subscription create")
+            printf '%s\n' "$*" >&2
+            ;;
+        *)
+            printf 'unexpected az command: %s\n' "$*" >&2
+            return 98
+            ;;
+    esac
+}
+. "$1"
+"""
+    result = subprocess.run(
+        ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "--endpoint-type azurefunction" in result.stderr
+    assert (
+        "--endpoint /subscriptions/sub/resourceGroups/rg-test/providers/"
+        "Microsoft.Web/sites/func-test/functions/main"
+    ) in result.stderr
+    assert "--included-event-types Microsoft.Storage.BlobCreated" in result.stderr
+    assert (
+        "--subject-begins-with /blobServices/default/containers/"
+        "policy-intake/blobs/normalized/"
+    ) in result.stderr
 
 
 def test_disable_outlook_bash_skips_missing_fresh_environment_outputs() -> None:
