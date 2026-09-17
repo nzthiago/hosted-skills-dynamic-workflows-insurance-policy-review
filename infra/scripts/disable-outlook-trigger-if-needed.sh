@@ -2,13 +2,23 @@
 
 set -eu
 
-outlook_enabled=$(azd env get-value ENABLE_OUTLOOK_FALLBACK 2>/dev/null || true)
+optional_azd_value() {
+    value=$(azd env get-value "$1" 2>/dev/null) || value=
+    case "$value" in
+        *"ERROR: key not found in environment values:"*)
+            value=
+            ;;
+    esac
+    printf '%s' "$value"
+}
+
+outlook_enabled=$(optional_azd_value ENABLE_OUTLOOK_FALLBACK)
 if [ "$outlook_enabled" = "true" ]; then
     exit 0
 fi
 
-resource_group=$(azd env get-value AZURE_RESOURCE_GROUP_NAME 2>/dev/null || true)
-gateway_name=$(azd env get-value DATAVERSE_CONNECTOR_GATEWAY_NAME 2>/dev/null || true)
+resource_group=$(optional_azd_value AZURE_RESOURCE_GROUP_NAME)
+gateway_name=$(optional_azd_value DATAVERSE_CONNECTOR_GATEWAY_NAME)
 if [ -z "$resource_group" ] || [ -z "$gateway_name" ]; then
     exit 0
 fi

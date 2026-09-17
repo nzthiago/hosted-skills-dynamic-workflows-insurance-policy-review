@@ -1,12 +1,26 @@
 $ErrorActionPreference = 'Stop'
 
-$outlookEnabled = azd env get-value ENABLE_OUTLOOK_FALLBACK 2>$null
+function Get-OptionalAzdValue {
+    param([Parameter(Mandatory)][string] $Name)
+
+    $output = @(azd env get-value $Name 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        return ''
+    }
+    $value = ($output -join "`n").Trim()
+    if ($value -match '(?m)^ERROR: key not found in environment values:') {
+        return ''
+    }
+    return $value
+}
+
+$outlookEnabled = Get-OptionalAzdValue ENABLE_OUTLOOK_FALLBACK
 if ($outlookEnabled -eq 'true') {
     return
 }
 
-$resourceGroup = azd env get-value AZURE_RESOURCE_GROUP_NAME 2>$null
-$gatewayName = azd env get-value DATAVERSE_CONNECTOR_GATEWAY_NAME 2>$null
+$resourceGroup = Get-OptionalAzdValue AZURE_RESOURCE_GROUP_NAME
+$gatewayName = Get-OptionalAzdValue DATAVERSE_CONNECTOR_GATEWAY_NAME
 if (
     [string]::IsNullOrWhiteSpace($resourceGroup) -or
     [string]::IsNullOrWhiteSpace($gatewayName)

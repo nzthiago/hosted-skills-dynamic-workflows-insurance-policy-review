@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -89,3 +93,56 @@ def test_combined_hooks_keep_dataverse_primary() -> None:
     assert 'if [ "$outlook_enabled" = "true" ]' in configure
     assert "office365-policy-request-email" in disable
     assert "az resource delete" in disable
+
+
+def test_disable_outlook_bash_skips_missing_fresh_environment_outputs() -> None:
+    script = ROOT / "infra/scripts/disable-outlook-trigger-if-needed.sh"
+    command = """
+azd() {
+    printf '%s\n' \
+        "ERROR: key not found in environment values: '$3'" \
+        "Suggestion: Run azd env get-values."
+    return 0
+}
+az() {
+    printf 'az must not run for a fresh environment\n' >&2
+    return 99
+}
+. "$1"
+"""
+    result = subprocess.run(
+        ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "az must not run" not in result.stderr
+
+
+def test_disable_outlook_powershell_skips_missing_fresh_environment_outputs() -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("PowerShell is not installed.")
+    script = ROOT / "infra/scripts/disable-outlook-trigger-if-needed.ps1"
+    command = """
+function global:azd {
+    @(
+        "ERROR: key not found in environment values: '$($args[2])'",
+        "Suggestion: Run azd env get-values."
+    )
+}
+function global:az {
+    throw "az must not run for a fresh environment"
+}
+& $args[0]
+"""
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", command, str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "az must not run" not in result.stderr
