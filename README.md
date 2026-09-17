@@ -3,77 +3,100 @@
 [![Python](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/downloads/)
 
 A markdown-first [Azure Functions hosted skill](https://azure.github.io/azure-functions-agents-runtime/)
-that turns insurance-policy request emails into durable, human-reviewed document packets.
+that turns created Microsoft Dataverse policy-service-request rows into durable,
+human-reviewed document packets.
 
 ## What it does
 
-- Watches a dedicated Office 365 Outlook mailbox folder through a Connector Namespace trigger.
-- Validates a strict subject and attachment naming convention.
-- Calls the allow-listed `GetAttachment_V2` connector operation for every attachment.
-- Stages binary files and one normalized request manifest in Blob Storage.
+- Polls a Dataverse `Policy Service Request` table through a Connector Namespace trigger.
+- Normalizes structured row fields into the sample's existing `documents[]` metadata contract.
+- Creates one deterministic normalized request manifest in Blob Storage.
 - Runs validate → parallel inspect → build → publish as a Dynamic Workflow.
 - Produces an HTML report while keeping every policy decision human-owned.
 
-The sample records file metadata and Blob references. It does not verify document
-authenticity or update a policy.
+The sample reviews metadata only. It does not retrieve files, inspect binary contents,
+verify document authenticity, update Dataverse rows, or update an insurance policy.
 
-## Email contract
+## Dataverse row contract
 
-Send mail to the account that authorizes the Office 365 Outlook connection. Route it to
-the configured folder, by mailbox rule if necessary.
+Create one row only after all request metadata is ready:
 
-Subject:
+| Display name | Logical name | Required | Example |
+| --- | --- | --- | --- |
+| Request ID | `ipr_requestid` | Yes | `PSR-2026-00042` |
+| Policy ID | `ipr_policyid` | Yes | `AUTO-100042` |
+| Driver name | `ipr_drivername` | Yes | `Jordan Lee` |
+| Driver licence filename | `ipr_driverlicencefilename` | Yes | `jordan-lee-license.pdf` |
+| Driver licence status | `ipr_driverlicencestatus` | Yes | `received` |
+| Signed request filename | `ipr_signedrequestfilename` | Yes | `signed-request.pdf` |
+| Signed request status | `ipr_signedrequeststatus` | Yes | `missing` |
+| Review blob name | `ipr_reviewblobname` | No | `PSR-2026-00042.html` |
 
-```text
-[POLICY-REQUEST] PSR-2026-00042 | AUTO-100042 | Jordan Lee
-```
-
-Non-inline attachment names:
-
-```text
-driver_license__DOC-001__jordan-lee-license.pdf
-signed_request__DOC-002__signed-request.pdf
-```
-
-Only PDF, JPEG, and PNG files up to 10 MiB each are accepted. Request IDs and document
-IDs must be unique. Inline signature images are ignored.
+Statuses must be `received`, `missing`, or `expired`. Filenames are metadata labels;
+the sample does not download the referenced files. The Dataverse row ID is used with
+Request ID to build the idempotency key.
 
 ## Prerequisites
 
-- Azure subscription
-- Python 3.13 and [uv](https://docs.astral.sh/uv/)
-- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
-- Azure CLI
-- Office 365 account for the dedicated intake mailbox
+- Existing Dataverse/Power Platform environment
+- Account with permission to customize the environment
+- Connector authorization account with Global Read on the sample table
+- [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
+- Azure subscription, Azure Developer CLI, Azure CLI, Python 3.13, and
+  [uv](https://docs.astral.sh/uv/)
+
+## Create or verify the table
+
+Select the target environment and authenticate interactively:
+
+```bash
+pac auth create --environment "<environment name or URL>" --name insurance-policy-sample
+python scripts/setup_dataverse_schema.py \
+  --environment-url "https://<org>.crm.dynamics.com"
+```
+
+The script uses
+[`dataverse/policy-service-request.schema.json`](dataverse/policy-service-request.schema.json)
+to create or verify a dedicated publisher, unmanaged solution, organization-owned table,
+and the eight structured fields. It never creates file columns or stores credentials.
+Re-run with `--verify-only` for a non-mutating preflight.
+
+If PAC CLI is unavailable, create the same table in an unmanaged solution at
+[Power Apps](https://make.preview.powerapps.com/environments), using the logical names
+from the schema file.
 
 ## Deploy and authorize
 
-Choose the mailbox folder before provisioning:
-
 ```bash
 azd auth login
-azd env set OUTLOOK_FOLDER_PATH "Inbox/Policy Review"
+azd env set DATAVERSE_ENVIRONMENT_NAME "<environment friendly name>"
+azd env set DATAVERSE_TABLE_NAME "ipr_policyservicerequests"
 azd up
 ```
 
-`postprovision` opens the Connector Namespace portal. Authorization remains interactive:
-sign in as the dedicated mailbox owner and confirm the connection reaches `Connected`.
-After application deployment, `postdeploy` creates the `OnNewEmailV3` trigger config
-without printing its callback key.
+You can set `DATAVERSE_ENVIRONMENT_URL` instead of the friendly name. The
+`postprovision` hook opens the Connector Namespace portal for interactive OAuth
+authorization. The authorized identity must have Global Read on the table because
+`GetOnNewItems_V2` is an Admin Only trigger.
 
-The folder value is connector-defined. Validate the folder ID/path in the Connector
-Namespace portal before a live demo; the default is `Inbox/Policy Review`.
+After application deployment, `postdeploy` creates only the proven
+`GetOnNewItems_V2` created-row trigger. It uses a five-minute polling interval and does
+not claim update or delete support. The broader `SubscribeWebhookTrigger` is intentionally
+not configured because Connector Namespace trigger creation is not currently proven.
 
-## Run the email demo
+## Run the demo
 
-1. Send a uniquely numbered request email that follows the contract.
-2. Follow the run in the Durable Task Scheduler dashboard:
+1. Complete schema setup, deployment, connector authorization, and trigger configuration
+   before the presentation.
+2. In Power Apps, create a new `Policy Service Request` row with a unique Request ID.
+3. Allow at least one five-minute polling interval.
+4. Follow the workflow in the Durable Task Scheduler dashboard:
 
    ```bash
    azd env get-value DURABLE_TASK_DASHBOARD_URL
    ```
 
-3. Load the report settings and download the result:
+5. Download the generated report:
 
    ```bash
    export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
@@ -81,13 +104,10 @@ Namespace portal before a live demo; the default is `Inbox/Policy Review`.
    uv run --with-requirements requirements.txt python scripts/demo.py download
    ```
 
-The report is saved to `output/PSR-2026-00042.html`.
+## Manual fallback
 
-## Manual/OneDrive fallback
-
-If the Outlook polling trigger is delayed, use the normalized-request fallback. The
-example references a local file; replace `source_path` with a path in a locally synced
-OneDrive folder when desired.
+If Dataverse polling or authorization delays the demo, submit the same normalized
+metadata contract directly:
 
 ```bash
 export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
@@ -97,13 +117,13 @@ uv run --with-requirements requirements.txt \
   --request examples/policy-service-request.json
 ```
 
-The fallback stages files and creates the same `policy-intake/normalized/<request>.json`
-manifest consumed by the hosted skill. Reusing a request ID is rejected.
+Reusing a Request ID is rejected so connector retries and manual fallback cannot start
+duplicate workflows.
 
 ## Local development
 
-Copy the settings template, populate the Foundry and deployed Connector MCP values, then
-start Azurite, the Durable Task Scheduler emulator, and Functions:
+Copy the settings template, populate Foundry values, then start Azurite, the Durable Task
+Scheduler emulator, and Functions:
 
 ```bash
 cp src/local.settings.template.json src/local.settings.json
@@ -116,28 +136,25 @@ docker run --rm --name dts-emulator \
 cd src && uv run --with-requirements requirements.txt func start
 ```
 
-Connector callbacks normally require a deployed Function App. Test the local workflow
-with `submit-manual`.
+Connector callbacks require a deployed Function App. Test the local workflow with the
+manual fallback.
 
 ## Live-demo reliability
 
-- Authorize the connector and verify the folder before the session.
-- Use a mailbox rule so matching mail reaches the watched folder automatically.
-- Use a new request ID for every rehearsal; duplicates intentionally produce no new manifest.
-- Keep attachments small and avoid `.msg`, cloud-reference, encrypted, and inline-only files.
-- Send the email at least two polling intervals before the workflow walkthrough.
-- Keep the manual/OneDrive-synced fallback request ready in another terminal.
-- Confirm the DTS dashboard and Blob report download before presenting.
+- Import/verify the table and grant Global Read before the session.
+- Authorize the Dataverse connection and create the trigger before inserting the demo row.
+- Use a unique Request ID for each rehearsal and live run.
+- Budget at least five minutes for polling; do not edit an existing row and expect a run.
+- Keep `examples/policy-service-request.json` ready for immediate manual fallback.
+- Confirm the Durable Task Scheduler dashboard and report download before presenting.
 
 ## How it works
 
-Outlook Connector trigger → `OutlookPolicyIntake` → `GetAttachment_V2` → staged attachment
-Blobs → normalized manifest Blob → hosted skill → Durable Task Scheduler → HTML report Blob.
+Dataverse `GetOnNewItems_V2` poll → `DataversePolicyIntake` → normalized manifest Blob →
+hosted skill → Durable Task Scheduler → HTML report Blob.
 
-The trigger includes attachment metadata so attachment IDs are available, but the intake
-code discards any trigger-provided `contentBytes` and explicitly retrieves each file.
-A deterministic request manifest and a Blob lease prevent connector retries from starting
-another workflow for the same request ID. Report publication remains overwrite-safe.
+The normalized manifest is create-only and keyed by Request ID. A Blob lease serializes
+concurrent deliveries, and report publication uses a stable overwrite-safe Blob name.
 
 [How it works](docs/how-it-works.md) ·
 [Use cases](docs/use-cases.md) ·
@@ -145,4 +162,5 @@ another workflow for the same request ID. Report publication remains overwrite-s
 [Deploy](docs/deploy.md) ·
 [Troubleshooting](docs/troubleshooting.md)
 
-Clean up with `azd down --purge`.
+Clean up Azure resources with `azd down --purge`. Dataverse solution cleanup remains an
+explicit environment-owner action.

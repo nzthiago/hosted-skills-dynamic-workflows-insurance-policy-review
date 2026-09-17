@@ -1,21 +1,21 @@
 # Customize
 
-## Change the mail contract
+## Change the Dataverse contract
 
-Edit `SUBJECT_PATTERN` and `ATTACHMENT_PATTERN` in
-[src/outlook_intake.py](../src/outlook_intake.py), then update README examples and tests.
-Keep parsing deterministic; do not ask the model to interpret mailbox commands.
+Update the canonical logical names in
+[`dataverse/policy-service-request.schema.json`](../dataverse/policy-service-request.schema.json)
+and [src/dataverse_intake.py](../src/dataverse_intake.py) together. Add tests before
+changing a required column or status value.
 
-## Change attachment limits
+Keep the row deterministic and structured. Do not ask the model to infer request fields
+from free-form notes.
 
-Update `ALLOWED_CONTENT_TYPES` and `MAX_ATTACHMENT_BYTES`. Treat email names, MIME types,
-and content as untrusted. Keep connector operations read-only and allow-listed.
+## Use file columns later
 
-## Inspect real documents
-
-`inspect_driver_document` currently evaluates normalized metadata and Blob references.
-Document extraction/authenticity checking is a separate safety-sensitive extension. Keep
-the report decision-neutral and require authorized human verification.
+The current workflow evaluates metadata only. If binary inspection becomes a real
+requirement, retrieve file-column content explicitly and stage it before workflow
+execution. Treat that as a separate security and retention design; do not imply that
+Dataverse row retrieval includes file bytes.
 
 ## Change the workflow
 
@@ -27,8 +27,9 @@ The plan is in [src/main.agent.md](../src/main.agent.md). Preserve:
 - `review_status: human_review_required`
 - `decision: null`
 
-## Use another intake connector
+## Use another trigger
 
-Keep the normalized manifest contract stable. Replace only the ingestion function,
-Connector Namespace resources, and trigger config. Do not expose write/delete operations
-when read-only retrieval is sufficient.
+`GetOnNewItems_V2` is the only Dataverse trigger proven by the supplied Connector
+Namespace sample. It is Admin Only, deprecated, and created-row only. Do not claim
+update/delete support. Replace it with `SubscribeWebhookTrigger` only after a deployed
+capability test proves trigger-config creation and callback behavior.

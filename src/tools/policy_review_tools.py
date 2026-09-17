@@ -105,13 +105,13 @@ def validate_add_driver_request(args: dict[str, Any]) -> dict[str, Any]:
         if document.get("status") not in ALLOWED_DOCUMENT_STATUSES:
             raise ValueError("document status must be received, missing, or expired")
         blob_name = document.get("blob_name")
-        if document["status"] == "received" and (
+        if blob_name is not None and (
             not isinstance(blob_name, str)
             or not blob_name.startswith("attachments/")
             or ".." in blob_name
             or "\\" in blob_name
         ):
-            raise ValueError("received documents must reference a safe staged attachment Blob")
+            raise ValueError("blob_name must reference a safe staged attachment Blob")
 
     return {
         "request_id": request_id,

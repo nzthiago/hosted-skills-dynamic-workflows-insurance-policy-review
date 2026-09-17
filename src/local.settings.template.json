@@ -11,7 +11,7 @@
     "POLICY_REVIEW_CONTAINER": "policy-review-packets",
     "POLICY_INTAKE_CONTAINER": "policy-intake",
     "POLICY_REVIEW_STORAGE_URL": "http://127.0.0.1:10000/devstoreaccount1",
-    "O365_MCP_SERVER_URL": "",
-    "O365_MCP_CLIENT_ID": ""
+    "DATAVERSE_ENVIRONMENT_URL": "",
+    "DATAVERSE_TABLE_NAME": "ipr_policyservicerequests"
   }
 }

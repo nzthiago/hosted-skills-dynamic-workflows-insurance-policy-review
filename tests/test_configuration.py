@@ -20,14 +20,24 @@ def test_connector_preview_bundle_and_timeout() -> None:
     assert host["extensionBundle"]["version"] == "[4.42.0, 5.0.0)"
 
 
-def test_infrastructure_has_read_only_attachment_operation() -> None:
+def test_infrastructure_uses_only_created_row_dataverse_trigger() -> None:
     gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()
     trigger = (ROOT / "infra/app/trigger-config.bicep").read_text()
     storage = (ROOT / "infra/app/storage.bicep").read_text()
     rbac = (ROOT / "infra/app/rbac.bicep").read_text()
-    assert "GetAttachment_V2" in gateway
-    assert "SendEmail" not in gateway
-    assert "OnNewEmailV3" in trigger
-    assert "includeAttachments" in trigger
+    assert "commondataservice" in gateway
+    assert "mcpserverconfigs" not in gateway
+    assert "GetOnNewItems_V2" in trigger
+    assert "SubscribeWebhookTrigger" not in trigger
+    assert "recurrenceInterval string = '5'" in trigger
     assert "requestQueue" not in storage
     assert "storageQueueDataContributorRoleId" not in rbac
+
+
+def test_outlook_connector_dependencies_are_removed() -> None:
+    requirements = (ROOT / "src/requirements.txt").read_text()
+    main = (ROOT / "infra/main.bicep").read_text()
+    assert "httpx" not in requirements
+    assert "\nmcp" not in requirements
+    assert "O365_" not in main
+    assert "GetAttachment_V2" not in main

@@ -2,37 +2,33 @@
 
 ## Complete request
 
-Attach both:
-
-```text
-driver_license__DOC-001__jordan-license.pdf
-signed_request__DOC-002__signed-request.pdf
-```
-
-The report lists both required document types as present.
+Create a row with both statuses set to `received`. The report lists both required
+document types as present.
 
 ## Missing document
 
-Send only the driver's license. The normalized request contains only retrieved
-attachments, and the report identifies `signed_request` as missing.
+Set Signed request status to `missing`. The report identifies `signed_request` as
+missing while retaining its filename as business metadata.
+
+## Expired driver licence
+
+Set Driver licence status to `expired`. The report marks the evidence as requiring a
+current copy.
 
 ## Duplicate delivery
 
-Send the same request ID again or replay the connector callback. The deterministic
-manifest already exists, so no second review starts. Use a new request ID for a new run.
+Create or replay a row with the same Request ID. The deterministic manifest already
+exists, so no second review starts. Use a unique Request ID for a new run.
 
-## Manual or OneDrive-synced fallback
-
-Set a document's `source_path` in the example JSON to a local or OneDrive-synced path:
+## Manual fallback
 
 ```bash
 python scripts/demo.py submit-manual --request examples/policy-service-request.json
 ```
 
-The script stages the file and creates the same normalized manifest as Outlook intake.
+The script creates the same normalized metadata manifest as Dataverse intake.
 
-## Empty request
+## Updates and deletes
 
-The Outlook path rejects messages without non-inline attachments. For workflow-only
-testing, a manually normalized request may contain an empty `documents` list; the report
-lists both required document types as missing.
+They are intentionally unsupported. The configured `GetOnNewItems_V2` operation polls
+only for rows created after trigger setup.

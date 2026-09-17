@@ -25,7 +25,7 @@ def _request() -> dict:
     }
 
 
-def test_validate_preserves_staged_document_references() -> None:
+def test_validate_preserves_optional_staged_document_references() -> None:
     result = policy_review_tools.validate_add_driver_request({"request": _request()})
     assert result["documents"][0]["blob_name"] == "attachments/PSR-1/license.pdf"
     assert result["review_blob"] == "reviews/PSR-1.html"
@@ -78,8 +78,8 @@ def test_load_normalized_request_rejects_attachment_blob() -> None:
         })
 
 
-def test_validate_rejects_unstaged_received_document() -> None:
+def test_validate_accepts_metadata_only_received_document() -> None:
     request = _request()
     request["documents"][0].pop("blob_name")
-    with pytest.raises(ValueError):
-        policy_review_tools.validate_add_driver_request({"request": request})
+    result = policy_review_tools.validate_add_driver_request({"request": request})
+    assert result["documents"][0]["status"] == "received"

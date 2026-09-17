@@ -38,8 +38,17 @@ param dtsSkuName string = 'Consumption'
 @description('Durable Task Scheduler capacity when the Dedicated SKU is selected.')
 param dtsDedicatedCapacity int = 1
 
-@description('Office 365 Outlook folder ID or connector-recognized path used for policy intake.')
-param outlookFolderPath string = 'Inbox/Policy Review'
+@description('Region for the Connector Namespace.')
+param connectorNamespaceLocation string = 'westcentralus'
+
+@description('URL of the Dataverse environment, for example https://org.crm.dynamics.com.')
+param dataverseEnvironmentUrl string = ''
+
+@description('Friendly Dataverse environment name, used when the URL is not set.')
+param dataverseEnvironmentName string = ''
+
+@description('Entity set name for the Policy Service Request table.')
+param dataverseTableName string = 'ipr_policyservicerequests'
 
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = {
@@ -55,7 +64,7 @@ var foundryAccountName = 'aipolicy${resourceToken}'
 var foundryProjectName = '${foundryAccountName}-project'
 var schedulerName = 'dts-policy-${resourceToken}'
 var connectorGatewayName = 'cgw-policy-${resourceToken}'
-var outlookConnectionName = 'office365-outlook'
+var dataverseConnectionName = 'dataverse-policy-intake'
 var taskHubName = 'policyreviews'
 var deploymentContainerName = 'app-package-${resourceToken}'
 var reportContainerName = 'policy-review-packets'
@@ -172,15 +181,14 @@ module rbac './app/rbac.bicep' = {
   }
 }
 
-module outlookConnector './app/connector-gateway.bicep' = {
-  name: 'outlook-connector'
+module dataverseConnector './app/connector-gateway.bicep' = {
+  name: 'dataverse-connector'
   scope: resourceGroup
   params: {
     connectorGatewayName: connectorGatewayName
-    connectionName: outlookConnectionName
-    location: location
+    connectionName: dataverseConnectionName
+    location: connectorNamespaceLocation
     tags: tags
-    managedIdentityPrincipalId: identity.outputs.principalId
     deployerPrincipalId: deployerPrincipalId
     tenantId: tenant().tenantId
   }
@@ -212,8 +220,7 @@ module api './app/api.bicep' = {
       POLICY_REVIEW_STORAGE_URL: storage.outputs.blobEndpoint
       POLICY_REVIEW_CONTAINER: reportContainerName
       POLICY_INTAKE_CONTAINER: intakeContainerName
-      O365_MCP_SERVER_URL: outlookConnector.outputs.mcpEndpointUrl
-      O365_MCP_CLIENT_ID: identity.outputs.clientId
+      DATAVERSE_TABLE_NAME: dataverseTableName
       ENABLE_MULTIPLATFORM_BUILD: 'true'
     }
   }
@@ -227,11 +234,12 @@ output AZURE_STORAGE_ACCOUNT_NAME string = storage.outputs.name
 output POLICY_REVIEW_STORAGE_URL string = storage.outputs.blobEndpoint
 output POLICY_REVIEW_CONTAINER string = reportContainerName
 output POLICY_INTAKE_CONTAINER string = intakeContainerName
-output O365_CONNECTOR_GATEWAY_NAME string = outlookConnector.outputs.connectorGatewayName
-output O365_CONNECTION_NAME string = outlookConnector.outputs.connectionName
-output O365_CONNECTION_ID string = outlookConnector.outputs.connectionId
-output O365_MCP_SERVER_URL string = outlookConnector.outputs.mcpEndpointUrl
-output OUTLOOK_FOLDER_PATH string = outlookFolderPath
+output DATAVERSE_CONNECTOR_GATEWAY_NAME string = dataverseConnector.outputs.connectorGatewayName
+output DATAVERSE_CONNECTION_NAME string = dataverseConnector.outputs.connectionName
+output DATAVERSE_CONNECTION_ID string = dataverseConnector.outputs.connectionId
+output DATAVERSE_ENVIRONMENT_URL string = dataverseEnvironmentUrl
+output DATAVERSE_ENVIRONMENT_NAME string = dataverseEnvironmentName
+output DATAVERSE_TABLE_NAME string = dataverseTableName
 output DURABLE_TASK_SCHEDULER_NAME string = dts.outputs.name
 output DURABLE_TASK_HUB_NAME string = dts.outputs.taskHubName
 output DURABLE_TASK_DASHBOARD_URL string = dts.outputs.dashboardUrl

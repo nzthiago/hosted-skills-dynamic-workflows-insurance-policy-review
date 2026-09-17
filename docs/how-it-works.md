@@ -2,40 +2,38 @@
 
 ## Intake
 
-`OnNewEmailV3` watches the configured Office 365 Outlook folder and invokes
-`OutlookPolicyIntake` in [src/function_app.py](../src/function_app.py).
+The Connector Namespace uses the Common Data Service connector operation
+`GetOnNewItems_V2`. It polls the configured Dataverse entity set every five minutes and
+invokes `DataversePolicyIntake` only for created rows.
 
-[src/outlook_intake.py](../src/outlook_intake.py):
+[src/dataverse_intake.py](../src/dataverse_intake.py):
 
-1. Parses the Connector Extension callback envelope.
-2. Enforces the subject and attachment-name contracts.
-3. Ignores inline attachments and trigger-provided attachment bodies.
-4. Calls the allow-listed Connector MCP `GetAttachment_V2` operation by message ID and
-   attachment ID.
-5. Validates MIME type/size, decodes Base64, computes SHA-256, and uploads each binary.
-6. Creates one deterministic `normalized/<request-id>.json` manifest.
+1. Parses the Connector Extension `body.value` batch.
+2. Validates the eight structured Policy Service Request fields.
+3. Maps driver-licence and signed-request fields into the existing `documents[]` schema.
+4. Uses the Dataverse row ID and Request ID as the idempotency identity.
+5. Creates one deterministic `normalized/<request-id>.json` manifest.
 
-A Blob lease serializes concurrent deliveries. The final manifest is created with
-`overwrite=False`, so connector retries and resends with the same request ID do not emit
-another manifest.
+No connector action, file column, attachment lookup, or binary download occurs. Row
+values are untrusted data and never agent instructions.
+
+A Blob lease serializes concurrent deliveries. The manifest uses `overwrite=False`, so
+connector retries or another row with the same Request ID cannot emit another workflow
+trigger.
 
 ## Hosted skill and Dynamic Workflow
 
-The normalized manifest Blob triggers [src/main.agent.md](../src/main.agent.md). Because
-the runtime's Blob trigger serialization exposes Blob metadata rather than file contents,
-the first workflow tool loads the manifest.
-
-The workflow then:
+The normalized manifest Blob triggers [src/main.agent.md](../src/main.agent.md). The first
+workflow tool loads the manifest, then the workflow runs:
 
 1. `load_normalized_policy_request`
 2. `validate_add_driver_request`
-3. `inspect_driver_document` for every staged document, in parallel
+3. `inspect_driver_document` for every metadata record in parallel
 4. `build_driver_review_report`
 5. `publish_driver_review_report`
 
-The activities are synchronous, JSON-serializable `@workflow_tool` functions in
-[src/tools/policy_review_tools.py](../src/tools/policy_review_tools.py). The publisher
-uses a stable report name and `overwrite=True`, making report retries idempotent.
+The publisher uses a stable report name and `overwrite=True`, making report retries
+idempotent.
 
 ## Human decision boundary
 
@@ -48,10 +46,10 @@ The generated result always contains:
 }
 ```
 
-The sample stages files but inspects metadata only. It does not validate authenticity,
-interpret policy coverage, or authorize a policy change.
+The sample does not authenticate documents, interpret coverage, write back to Dataverse,
+or authorize policy changes.
 
 ## Manual fallback
 
-`scripts/demo.py submit-manual` stages local or OneDrive-synced files and writes the same
-normalized manifest. This bypasses Outlook without creating a second workflow design.
+`scripts/demo.py submit-manual` writes the same metadata-only normalized manifest. It
+bypasses Dataverse polling without creating another workflow design.

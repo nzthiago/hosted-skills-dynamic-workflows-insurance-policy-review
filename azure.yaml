@@ -11,22 +11,22 @@ hooks:
   postprovision:
     windows:
       shell: pwsh
-      run: ./infra/scripts/authorize-outlook.ps1
+      run: ./infra/scripts/authorize-dataverse.ps1
       interactive: true
       continueOnError: false
     posix:
       shell: sh
-      run: ./infra/scripts/authorize-outlook.sh
+      run: ./infra/scripts/authorize-dataverse.sh
       interactive: true
       continueOnError: false
   postdeploy:
     windows:
       shell: pwsh
-      run: ./infra/scripts/configure-outlook-trigger.ps1
+      run: ./infra/scripts/configure-dataverse-trigger.ps1
       interactive: true
       continueOnError: false
     posix:
       shell: sh
-      run: ./infra/scripts/configure-outlook-trigger.sh
+      run: ./infra/scripts/configure-dataverse-trigger.sh
       interactive: true
       continueOnError: false

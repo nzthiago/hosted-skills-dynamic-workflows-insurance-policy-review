@@ -66,53 +66,14 @@ def submit_manual(request_path: Path) -> None:
     with suppress(ResourceExistsError):
         container.create_container()
 
+    documents = request.get("documents", [])
+    if not isinstance(documents, list):
+        raise ValueError("documents must be an array")
     normalized_documents: list[dict[str, Any]] = []
-    for position, document in enumerate(request.get("documents", [])):
+    for position, document in enumerate(documents):
         if not isinstance(document, dict):
             raise ValueError("documents must contain objects")
         normalized = dict(document)
-        source_path_value = normalized.pop("source_path", None)
-        if source_path_value:
-            source_path = Path(source_path_value).expanduser()
-            if not source_path.is_absolute():
-                source_path = request_path.parent / source_path
-            content = source_path.read_bytes()
-            document_id = str(normalized["document_id"])
-            document_type = str(normalized["type"])
-            if not SAFE_ID_PATTERN.fullmatch(document_id):
-                raise ValueError("document_id contains unsupported characters")
-            if document_type not in {"driver_license", "signed_request"}:
-                raise ValueError("document type must be driver_license or signed_request")
-            blob_name = (
-                f"attachments/{request_id}/{document_type}/{document_id}/"
-                f"{source_path.name}"
-            )
-            content_type = {
-                ".pdf": "application/pdf",
-                ".jpg": "image/jpeg",
-                ".jpeg": "image/jpeg",
-                ".png": "image/png",
-            }.get(source_path.suffix.lower())
-            if content_type is None:
-                raise ValueError(f"Unsupported attachment type: {source_path.suffix}")
-            container.get_blob_client(blob_name).upload_blob(
-                content,
-                overwrite=True,
-                content_settings=ContentSettings(content_type=content_type),
-                metadata={
-                    "request_id": request_id,
-                    "document_id": document_id,
-                    "source": "manual-fallback",
-                },
-            )
-            normalized.update({
-                "file_name": source_path.name,
-                "blob_name": blob_name,
-                "content_type": content_type,
-                "size": len(content),
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "status": "received",
-            })
         normalized.setdefault("position", position)
         normalized_documents.append(normalized)
 
@@ -137,7 +98,10 @@ def submit_manual(request_path: Path) -> None:
             f"Request {request_id} was already submitted; use a new request_id."
         ) from exc
 
-    print(f"Submitted fallback request {request_id} with {len(normalized_documents)} documents.")
+    print(
+        f"Submitted fallback request {request_id} "
+        f"with {len(normalized_documents)} document records."
+    )
     print(f"Manifest: {container_name}/{manifest_name}")
     print(f"Report destination: {_container_name()}/{request['review_blob']}")
 
@@ -158,7 +122,7 @@ def _parser() -> argparse.ArgumentParser:
 
     submit_parser = subparsers.add_parser(
         "submit-manual",
-        help="Stage local/OneDrive-synced files and create a normalized request Blob.",
+        help="Create a normalized metadata request Blob without Dataverse.",
     )
     submit_parser.add_argument(
         "--request",

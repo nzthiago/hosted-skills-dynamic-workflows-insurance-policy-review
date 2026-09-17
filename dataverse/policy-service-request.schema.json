@@ -1,0 +1,80 @@
+{
+  "publisher": {
+    "uniqueName": "insurance_policy_sample",
+    "friendlyName": "Insurance Policy Sample",
+    "prefix": "ipr",
+    "optionValuePrefix": 81700
+  },
+  "solution": {
+    "uniqueName": "InsurancePolicyReviewSample",
+    "friendlyName": "Insurance Policy Review Sample",
+    "version": "1.0.0.0"
+  },
+  "table": {
+    "schemaName": "ipr_PolicyServiceRequest",
+    "logicalName": "ipr_policyservicerequest",
+    "entitySetName": "ipr_policyservicerequests",
+    "displayName": "Policy Service Request",
+    "displayCollectionName": "Policy Service Requests",
+    "columns": [
+      {
+        "schemaName": "ipr_RequestId",
+        "logicalName": "ipr_requestid",
+        "displayName": "Request ID",
+        "type": "String",
+        "maxLength": 128,
+        "primaryName": true
+      },
+      {
+        "schemaName": "ipr_PolicyId",
+        "logicalName": "ipr_policyid",
+        "displayName": "Policy ID",
+        "type": "String",
+        "maxLength": 128
+      },
+      {
+        "schemaName": "ipr_DriverName",
+        "logicalName": "ipr_drivername",
+        "displayName": "Driver name",
+        "type": "String",
+        "maxLength": 200
+      },
+      {
+        "schemaName": "ipr_DriverLicenceFilename",
+        "logicalName": "ipr_driverlicencefilename",
+        "displayName": "Driver licence filename",
+        "type": "String",
+        "maxLength": 260
+      },
+      {
+        "schemaName": "ipr_DriverLicenceStatus",
+        "logicalName": "ipr_driverlicencestatus",
+        "displayName": "Driver licence status",
+        "type": "String",
+        "maxLength": 20
+      },
+      {
+        "schemaName": "ipr_SignedRequestFilename",
+        "logicalName": "ipr_signedrequestfilename",
+        "displayName": "Signed request filename",
+        "type": "String",
+        "maxLength": 260
+      },
+      {
+        "schemaName": "ipr_SignedRequestStatus",
+        "logicalName": "ipr_signedrequeststatus",
+        "displayName": "Signed request status",
+        "type": "String",
+        "maxLength": 20
+      },
+      {
+        "schemaName": "ipr_ReviewBlobName",
+        "logicalName": "ipr_reviewblobname",
+        "displayName": "Review blob name",
+        "type": "String",
+        "maxLength": 512,
+        "required": false
+      }
+    ]
+  }
+}

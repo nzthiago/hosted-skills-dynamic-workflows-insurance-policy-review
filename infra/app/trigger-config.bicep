@@ -1,12 +1,12 @@
 param connectorGatewayName string
-param connectionName string = 'office365-outlook'
-param triggerConfigName string = 'office365-policy-request-email'
+param connectionName string = 'dataverse-policy-intake'
+param triggerConfigName string = 'dataverse-policy-service-request-created'
 @secure()
 param callbackUrl string
-param folderPath string
-param subjectFilter string = '[POLICY-REQUEST]'
+param dataset string
+param tableName string = 'ipr_policyservicerequests'
 param recurrenceFrequency string = 'Minute'
-param recurrenceInterval string = '1'
+param recurrenceInterval string = '5'
 
 #disable-next-line BCP081
 resource connectorGateway 'Microsoft.Web/connectorGateways@2026-05-01-preview' existing = {
@@ -14,35 +14,25 @@ resource connectorGateway 'Microsoft.Web/connectorGateways@2026-05-01-preview' e
 }
 
 #disable-next-line BCP081
-resource outlookTrigger 'Microsoft.Web/connectorGateways/triggerconfigs@2026-05-01-preview' = {
+resource dataverseTrigger 'Microsoft.Web/connectorGateways/triggerconfigs@2026-05-01-preview' = {
   parent: connectorGateway
   name: triggerConfigName
   properties: {
     state: 'Enabled'
-    description: 'Invokes policy intake for new Outlook messages with attachments.'
+    description: 'Invokes policy intake when a Policy Service Request row is created.'
     connectionDetails: {
-      connectorName: 'office365'
+      connectorName: 'commondataservice'
       connectionName: connectionName
     }
-    operationName: 'OnNewEmailV3'
+    operationName: 'GetOnNewItems_V2'
     parameters: [
       {
-        name: 'folderPath'
-        value: folderPath
+        name: 'dataset'
+        value: dataset
       }
       {
-        name: 'fetchOnlyWithAttachment'
-        value: true
-      }
-      {
-        // Attachment IDs are required for GetAttachment_V2. Intake code discards
-        // trigger-provided contentBytes and explicitly retrieves each attachment.
-        name: 'includeAttachments'
-        value: true
-      }
-      {
-        name: 'subjectFilter'
-        value: subjectFilter
+        name: 'table'
+        value: tableName
       }
     ]
     metadata: {
@@ -56,4 +46,4 @@ resource outlookTrigger 'Microsoft.Web/connectorGateways/triggerconfigs@2026-05-
   }
 }
 
-output triggerConfigId string = outlookTrigger.id
+output triggerConfigId string = dataverseTrigger.id
