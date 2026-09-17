@@ -220,9 +220,11 @@ def _stage_row(
     lease = BlobLeaseClient(lock_blob)
     try:
         lease.acquire(lease_duration=60)
-    except HttpResponseError:
-        logger.info("Concurrent Dataverse request ignored: request_id=%s", request_id)
-        return None
+    except HttpResponseError as exc:
+        if exc.status_code == 409 and exc.error_code == "LeaseAlreadyPresent":
+            logger.info("Concurrent Dataverse request ignored: request_id=%s", request_id)
+            return None
+        raise
 
     try:
         if manifest_blob.exists():

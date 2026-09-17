@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import HttpResponseError, ResourceExistsError
 
 import dataverse_intake
 
@@ -136,6 +136,26 @@ def test_process_trigger_is_idempotent(monkeypatch) -> None:
     manifest = json.loads(service.container.store[first[0]])
     assert manifest["idempotency_key"]
     assert "blob_name" not in manifest["documents"][0]
+
+
+def test_process_trigger_propagates_storage_lease_failures(monkeypatch) -> None:
+    service = FakeService()
+    monkeypatch.setattr(dataverse_intake, "_storage_service", lambda: service)
+
+    class FailingLease(FakeLease):
+        def acquire(self, *, lease_duration: int) -> None:
+            assert lease_duration == 60
+            error = HttpResponseError("storage unavailable")
+            error.status_code = 503
+            error.error_code = "ServerBusy"
+            raise error
+
+    monkeypatch.setattr(dataverse_intake, "BlobLeaseClient", FailingLease)
+
+    with pytest.raises(HttpResponseError, match="storage unavailable"):
+        dataverse_intake.process_dataverse_trigger(
+            {"body": {"value": [_row()]}}
+        )
 
 
 def test_process_trigger_drops_invalid_row_without_retry(monkeypatch) -> None:
