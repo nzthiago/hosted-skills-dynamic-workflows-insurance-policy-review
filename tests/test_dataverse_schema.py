@@ -34,6 +34,20 @@ def test_optional_review_blob_is_not_required() -> None:
     assert attribute["RequiredLevel"]["Value"] == "None"
 
 
+def test_primary_name_matches_dataverse_platform_metadata() -> None:
+    schema = json.loads(SCHEMA_PATH.read_text())
+    request_id = schema["table"]["columns"][0]
+    attribute = setup_dataverse_schema._attribute(request_id)
+
+    assert request_id["logicalName"] == "ipr_requestid"
+    assert request_id["maxLength"] == 850
+    assert request_id["required"] is False
+    assert request_id["primaryName"] is True
+    assert attribute["MaxLength"] == 850
+    assert attribute["RequiredLevel"]["Value"] == "None"
+    assert attribute["IsPrimaryName"] is True
+
+
 def test_environment_id_resolves_organization_url() -> None:
     instances = [
         {

@@ -39,6 +39,10 @@ Statuses must be `received`, `missing`, or `expired`. Filenames are metadata lab
 the sample does not download the referenced files. The Dataverse row ID is used with
 Request ID to build the idempotency key.
 
+Dataverse stores the Request ID as the table's primary-name column, whose platform
+metadata uses a maximum length of 850 and does not enforce requiredness. The intake
+application still requires and validates a non-empty Request ID before starting a review.
+
 ## Prerequisites
 
 - Existing Dataverse/Power Platform environment

@@ -22,7 +22,8 @@
         "logicalName": "ipr_requestid",
         "displayName": "Request ID",
         "type": "String",
-        "maxLength": 128,
+        "maxLength": 850,
+        "required": false,
         "primaryName": true
       },
       {
