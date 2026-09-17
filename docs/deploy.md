@@ -15,25 +15,33 @@ changed with `CONNECTOR_NAMESPACE_LOCATION`.
 ## Prepare Dataverse
 
 ```bash
-pac auth create --environment "<environment>" --name insurance-policy-sample
+az login --tenant "<tenant ID>"
+pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
 python scripts/setup_dataverse_schema.py \
-  --environment-url "https://<org>.crm.dynamics.com"
+  --environment-id "<complete environment ID>"
 ```
 
 Grant the connector authorization account Global Read on
 `ipr_policyservicerequests`. Complete this before deployment or the Admin Only poll
-returns 403.
+returns 403. `--environment-id` and `--environment-name` resolve the organization URL
+through Dataverse Global Discovery; `--environment-url` bypasses discovery. Azure CLI
+must be signed in to the environment's tenant. Copy the complete ID from the Power Apps
+URL without removing prefixes such as `Default-`.
 
 ## Deploy
 
 ```bash
 azd auth login
-azd env set DATAVERSE_ENVIRONMENT_NAME "<friendly environment name>"
+az login --tenant "<tenant ID>"
+azd env set DATAVERSE_ENVIRONMENT_ID "<complete environment ID>"
 azd env set DATAVERSE_TABLE_NAME "ipr_policyservicerequests"
 azd up
 ```
 
-Alternatively set the exact `DATAVERSE_ENVIRONMENT_URL`.
+Alternatively set the exact `DATAVERSE_ENVIRONMENT_URL`, or use
+`DATAVERSE_ENVIRONMENT_NAME`. Resolution precedence is URL, ID, then friendly name.
+The local azd values are stored under ignored `.azure/` state and must not be copied
+into tracked parameter defaults.
 
 The deployment creates Functions, Durable Task Scheduler, Foundry, Storage containers,
 Application Insights, managed identity/RBAC, and a Dataverse Connector Namespace
@@ -77,6 +85,7 @@ fail, and postdeploy repeats the check idempotently.
 | `DATAVERSE_CONNECTOR_GATEWAY_NAME` | Connector Namespace resource |
 | `DATAVERSE_CONNECTION_ID` | Authorization/status lookup |
 | `DATAVERSE_ENVIRONMENT_URL` | Trigger dataset when supplied directly |
+| `DATAVERSE_ENVIRONMENT_ID` | Stable Power Platform ID resolved through Global Discovery |
 | `DATAVERSE_ENVIRONMENT_NAME` | Friendly environment lookup |
 | `DATAVERSE_TABLE_NAME` | Trigger entity set |
 | `ENABLE_OUTLOOK_FALLBACK` | Whether Outlook resources and trigger are enabled |

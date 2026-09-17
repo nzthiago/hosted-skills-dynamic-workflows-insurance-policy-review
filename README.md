@@ -50,19 +50,26 @@ Request ID to build the idempotency key.
 
 ## Create or verify the table
 
-Select the target environment and authenticate interactively:
+Select the target environment and authenticate interactively. The environment ID is the
+stable input shown in the Power Apps environment URL:
 
 ```bash
-pac auth create --environment "<environment name or URL>" --name insurance-policy-sample
+az login --tenant "<tenant ID>"
+pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
 python scripts/setup_dataverse_schema.py \
-  --environment-url "https://<org>.crm.dynamics.com"
+  --environment-id "<complete environment ID>"
 ```
+
+Copy the complete environment ID without removing prefixes such as `Default-`.
+Azure CLI must be signed in to the tenant that contains the environment so Global
+Discovery can resolve it.
 
 The script uses
 [`dataverse/policy-service-request.schema.json`](dataverse/policy-service-request.schema.json)
 to create or verify a dedicated publisher, unmanaged solution, organization-owned table,
-and the eight structured fields. It never creates file columns or stores credentials.
-Re-run with `--verify-only` for a non-mutating preflight.
+and the eight structured fields. For ID or friendly-name input it uses Dataverse Global
+Discovery to resolve the organization URL. It never creates file columns or stores
+credentials. Re-run with `--verify-only` for a non-mutating preflight.
 
 If PAC CLI is unavailable, create the same table in an unmanaged solution at
 [Power Apps](https://make.preview.powerapps.com/environments), using the logical names
@@ -72,12 +79,16 @@ from the schema file.
 
 ```bash
 azd auth login
-azd env set DATAVERSE_ENVIRONMENT_NAME "<environment friendly name>"
+az login --tenant "<tenant ID>"
+azd env set DATAVERSE_ENVIRONMENT_ID "<complete environment ID>"
 azd env set DATAVERSE_TABLE_NAME "ipr_policyservicerequests"
 azd up
 ```
 
-You can set `DATAVERSE_ENVIRONMENT_URL` instead of the friendly name. The
+You can set `DATAVERSE_ENVIRONMENT_URL` directly or use
+`DATAVERSE_ENVIRONMENT_NAME` as a final fallback. Resolution precedence is URL, ID,
+then friendly name. Values set with `azd env set` remain under the ignored `.azure/`
+directory and are not committed to the sample. The
 `postprovision` hook opens the Connector Namespace portal for interactive OAuth
 authorization. The authorized identity must have Global Read on the table because
 `GetOnNewItems_V2` is an Admin Only trigger.

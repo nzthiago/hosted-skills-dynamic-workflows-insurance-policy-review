@@ -7,12 +7,16 @@ publishers, solutions, tables, and columns. Run a non-mutating check:
 
 ```bash
 python scripts/setup_dataverse_schema.py \
-  --environment-url "https://<org>.crm.dynamics.com" \
+  --environment-id "<complete environment ID>" \
   --verify-only
 ```
 
 The script reports missing or incompatible schema components and never logs the PAC
 access token.
+
+If environment resolution fails, confirm Azure CLI is signed in and that Global
+Discovery returns the ID. Use `--environment-url` only when the organization URL is
+already known.
 
 ## The Dataverse connection is not authorized
 
@@ -24,6 +28,7 @@ hook. The connection must show `Connected`.
 Confirm:
 
 - the trigger config uses exactly `GetOnNewItems_V2`
+- `DATAVERSE_ENVIRONMENT_ID` resolves to the intended organization URL
 - `DATAVERSE_TABLE_NAME` is the plural entity-set name
 - the authorized account has Global Read on the table
 - the row was created after trigger configuration

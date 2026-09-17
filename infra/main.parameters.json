@@ -12,6 +12,7 @@
     "dtsDedicatedCapacity": { "value": "${DTS_DEDICATED_CAPACITY=1}" },
     "connectorNamespaceLocation": { "value": "${CONNECTOR_NAMESPACE_LOCATION=westcentralus}" },
     "dataverseEnvironmentUrl": { "value": "${DATAVERSE_ENVIRONMENT_URL=}" },
+    "dataverseEnvironmentId": { "value": "${DATAVERSE_ENVIRONMENT_ID=}" },
     "dataverseEnvironmentName": { "value": "${DATAVERSE_ENVIRONMENT_NAME=}" },
     "dataverseTableName": { "value": "${DATAVERSE_TABLE_NAME=ipr_policyservicerequests}" },
     "enableOutlookFallback": { "value": "${ENABLE_OUTLOOK_FALLBACK=false}" },

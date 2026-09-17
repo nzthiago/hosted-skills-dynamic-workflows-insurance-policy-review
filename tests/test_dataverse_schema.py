@@ -34,6 +34,48 @@ def test_optional_review_blob_is_not_required() -> None:
     assert attribute["RequiredLevel"]["Value"] == "None"
 
 
+def test_environment_id_resolves_organization_url() -> None:
+    instances = [
+        {
+            "EnvironmentId": "environment-123",
+            "FriendlyName": "Insurance Demo",
+            "Url": "https://insurance.crm.dynamics.com/",
+        }
+    ]
+    assert setup_dataverse_schema._select_environment_url(
+        instances,
+        environment_id="ENVIRONMENT-123",
+    ) == "https://insurance.crm.dynamics.com"
+
+
+def test_environment_id_takes_precedence_over_friendly_name() -> None:
+    instances = [
+        {
+            "EnvironmentId": "environment-primary",
+            "FriendlyName": "Other",
+            "Url": "https://primary.crm.dynamics.com",
+        },
+        {
+            "EnvironmentId": "environment-other",
+            "FriendlyName": "Insurance Demo",
+            "Url": "https://friendly.crm.dynamics.com",
+        },
+    ]
+    assert setup_dataverse_schema._select_environment_url(
+        instances,
+        environment_id="environment-primary",
+        environment_name="Insurance Demo",
+    ) == "https://primary.crm.dynamics.com"
+
+
+def test_environment_resolution_rejects_unknown_id() -> None:
+    with pytest.raises(RuntimeError, match="not found"):
+        setup_dataverse_schema._select_environment_url(
+            [],
+            environment_id="environment-missing",
+        )
+
+
 def test_verify_only_fails_when_publisher_is_missing(monkeypatch) -> None:
     schema = json.loads(SCHEMA_PATH.read_text())
     monkeypatch.setattr(setup_dataverse_schema, "_find", lambda *args: None)

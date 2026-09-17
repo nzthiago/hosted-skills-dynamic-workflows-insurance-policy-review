@@ -7,24 +7,28 @@ function_name=$(azd env get-value AZURE_FUNCTION_NAME)
 gateway_name=$(azd env get-value DATAVERSE_CONNECTOR_GATEWAY_NAME)
 connection_name=$(azd env get-value DATAVERSE_CONNECTION_NAME)
 environment_url=$(azd env get-value DATAVERSE_ENVIRONMENT_URL 2>/dev/null || true)
+environment_id=$(azd env get-value DATAVERSE_ENVIRONMENT_ID 2>/dev/null || true)
 environment_name=$(azd env get-value DATAVERSE_ENVIRONMENT_NAME 2>/dev/null || true)
 table_name=$(azd env get-value DATAVERSE_TABLE_NAME)
 
-if [ -z "$environment_url" ] && [ -n "$environment_name" ]; then
+if [ -z "$environment_url" ] && { [ -n "$environment_id" ] || [ -n "$environment_name" ]; }; then
     token=$(az account get-access-token \
         --resource https://globaldisco.crm.dynamics.com \
         --query accessToken -o tsv)
     environment_url=$(curl -fsS \
         -H "Authorization: Bearer $token" \
         https://globaldisco.crm.dynamics.com/api/discovery/v2.0/Instances |
-        jq -r --arg name "$environment_name" \
-            '.value[] | select((.FriendlyName | ascii_downcase) == ($name | ascii_downcase)) | .Url' |
+        jq -r --arg id "$environment_id" --arg name "$environment_name" \
+            '.value[] | select(
+                (($id != "") and (((.EnvironmentId // "") | ascii_downcase) == ($id | ascii_downcase)))
+                or (($id == "") and (((.FriendlyName // "") | ascii_downcase) == ($name | ascii_downcase)))
+            ) | .Url' |
         head -n 1)
 fi
 
 environment_url=${environment_url%/}
 if [ -z "$environment_url" ]; then
-    echo "Set DATAVERSE_ENVIRONMENT_URL or DATAVERSE_ENVIRONMENT_NAME before deployment." >&2
+    echo "Set DATAVERSE_ENVIRONMENT_URL, DATAVERSE_ENVIRONMENT_ID, or DATAVERSE_ENVIRONMENT_NAME before deployment." >&2
     exit 1
 fi
 

@@ -5,24 +5,38 @@ $functionName = azd env get-value AZURE_FUNCTION_NAME
 $gatewayName = azd env get-value DATAVERSE_CONNECTOR_GATEWAY_NAME
 $connectionName = azd env get-value DATAVERSE_CONNECTION_NAME
 $environmentUrl = azd env get-value DATAVERSE_ENVIRONMENT_URL 2>$null
+$environmentId = azd env get-value DATAVERSE_ENVIRONMENT_ID 2>$null
 $environmentName = azd env get-value DATAVERSE_ENVIRONMENT_NAME 2>$null
 $tableName = azd env get-value DATAVERSE_TABLE_NAME
 
-if ([string]::IsNullOrWhiteSpace($environmentUrl) -and -not [string]::IsNullOrWhiteSpace($environmentName)) {
+if (
+    [string]::IsNullOrWhiteSpace($environmentUrl) -and
+    (
+        -not [string]::IsNullOrWhiteSpace($environmentId) -or
+        -not [string]::IsNullOrWhiteSpace($environmentName)
+    )
+) {
     $token = az account get-access-token `
         --resource https://globaldisco.crm.dynamics.com `
         --query accessToken -o tsv
     $instances = Invoke-RestMethod `
         -Uri 'https://globaldisco.crm.dynamics.com/api/discovery/v2.0/Instances' `
         -Headers @{ Authorization = "Bearer $token" }
-    $environmentUrl = $instances.value |
-        Where-Object { $_.FriendlyName -ieq $environmentName } |
-        Select-Object -First 1 -ExpandProperty Url
+    if (-not [string]::IsNullOrWhiteSpace($environmentId)) {
+        $environmentUrl = $instances.value |
+            Where-Object { $_.EnvironmentId -ieq $environmentId } |
+            Select-Object -First 1 -ExpandProperty Url
+    }
+    else {
+        $environmentUrl = $instances.value |
+            Where-Object { $_.FriendlyName -ieq $environmentName } |
+            Select-Object -First 1 -ExpandProperty Url
+    }
 }
 
 $environmentUrl = "$environmentUrl".TrimEnd('/')
 if ([string]::IsNullOrWhiteSpace($environmentUrl)) {
-    throw "Set DATAVERSE_ENVIRONMENT_URL or DATAVERSE_ENVIRONMENT_NAME before deployment."
+    throw "Set DATAVERSE_ENVIRONMENT_URL, DATAVERSE_ENVIRONMENT_ID, or DATAVERSE_ENVIRONMENT_NAME before deployment."
 }
 
 $connectorKey = az functionapp keys list `

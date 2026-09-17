@@ -9,6 +9,7 @@
   manifests, and duplicate request protection.
 * Added reproducible Dataverse schema setup and metadata-only manual fallback submission.
 * Preserved Office 365 Outlook attachment intake as an opt-in fallback mode.
+* Added Power Platform environment-ID resolution through Dataverse Global Discovery.
 
 *Breaking Changes*
 

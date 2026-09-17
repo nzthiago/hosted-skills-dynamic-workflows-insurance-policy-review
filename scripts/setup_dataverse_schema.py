@@ -31,6 +31,89 @@ def _run_pac(*args: str) -> str:
     return result.stdout.strip()
 
 
+def _run_az(*args: str) -> str:
+    if shutil.which("az") is None:
+        raise RuntimeError(
+            "Azure CLI is required to resolve a Dataverse environment ID or name."
+        )
+    result = subprocess.run(
+        ["az", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def _select_environment_url(
+    instances: list[dict[str, Any]],
+    *,
+    environment_id: str | None = None,
+    environment_name: str | None = None,
+) -> str:
+    expected_id = environment_id.strip().casefold() if environment_id else None
+    expected_name = environment_name.strip().casefold() if environment_name else None
+    for instance in instances:
+        actual_id = str(instance.get("EnvironmentId", "")).strip().casefold()
+        actual_name = str(instance.get("FriendlyName", "")).strip().casefold()
+        if expected_id and actual_id == expected_id:
+            break
+        if expected_name and actual_name == expected_name:
+            break
+    else:
+        identifier = environment_id or environment_name
+        raise RuntimeError(
+            f"Dataverse environment '{identifier}' was not found by Global Discovery."
+        )
+
+    url = instance.get("Url")
+    if not isinstance(url, str) or not url.strip():
+        raise RuntimeError("Global Discovery returned an environment without a URL.")
+    return url.rstrip("/")
+
+
+def resolve_environment_url(
+    *,
+    environment_id: str | None = None,
+    environment_name: str | None = None,
+) -> str:
+    token = _run_az(
+        "account",
+        "get-access-token",
+        "--resource",
+        "https://globaldisco.crm.dynamics.com",
+        "--query",
+        "accessToken",
+        "-o",
+        "tsv",
+    )
+    if not token:
+        raise RuntimeError("Azure CLI returned an empty Global Discovery access token.")
+    request = urllib.request.Request(
+        "https://globaldisco.crm.dynamics.com/api/discovery/v2.0/Instances",
+        headers={
+            "Accept": "application/json",
+            "Authorization": "Bearer " + token,
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Dataverse Global Discovery failed with HTTP {exc.code}: {detail}"
+        ) from exc
+    instances = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(instances, list):
+        raise RuntimeError("Global Discovery returned an unexpected response.")
+    return _select_environment_url(
+        [item for item in instances if isinstance(item, dict)],
+        environment_id=environment_id,
+        environment_name=environment_name,
+    )
+
+
 def _request(
     environment_url: str,
     token: str,
@@ -312,10 +395,18 @@ def ensure_schema(
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    environment = parser.add_mutually_exclusive_group(required=True)
+    environment.add_argument(
         "--environment-url",
-        required=True,
         help="Dataverse organization URL, for example https://org.crm.dynamics.com.",
+    )
+    environment.add_argument(
+        "--environment-id",
+        help="Power Platform environment ID resolved through Dataverse Global Discovery.",
+    )
+    environment.add_argument(
+        "--environment-name",
+        help="Friendly environment name resolved through Dataverse Global Discovery.",
     )
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument(
@@ -329,12 +420,18 @@ def _parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _parser().parse_args()
     schema = json.loads(args.schema.read_text(encoding="utf-8"))
+    environment_url = args.environment_url
+    if environment_url is None:
+        environment_url = resolve_environment_url(
+            environment_id=args.environment_id,
+            environment_name=args.environment_name,
+        )
     _run_pac("auth", "who")
     token = _run_pac("auth", "token")
     if not token:
         raise RuntimeError("Power Platform CLI returned an empty access token.")
     ensure_schema(
-        args.environment_url.rstrip("/"),
+        environment_url.rstrip("/"),
         token,
         schema,
         verify_only=args.verify_only,

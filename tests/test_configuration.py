@@ -37,6 +37,21 @@ def test_infrastructure_defaults_to_created_row_dataverse_trigger() -> None:
     assert "storageQueueDataContributorRoleId" not in rbac
 
 
+def test_dataverse_environment_id_is_local_configuration() -> None:
+    parameters = (ROOT / "infra/main.parameters.json").read_text()
+    main = (ROOT / "infra/main.bicep").read_text()
+    posix = (ROOT / "infra/scripts/configure-dataverse-trigger.sh").read_text()
+    powershell = (
+        ROOT / "infra/scripts/configure-dataverse-trigger.ps1"
+    ).read_text()
+    gitignore = (ROOT / ".gitignore").read_text()
+    assert "DATAVERSE_ENVIRONMENT_ID" in parameters
+    assert "DATAVERSE_ENVIRONMENT_ID" in main
+    assert "DATAVERSE_ENVIRONMENT_ID" in posix
+    assert "DATAVERSE_ENVIRONMENT_ID" in powershell
+    assert ".azure/" in gitignore
+
+
 def test_outlook_fallback_is_allow_listed_and_optional() -> None:
     requirements = (ROOT / "src/requirements.txt").read_text()
     gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()

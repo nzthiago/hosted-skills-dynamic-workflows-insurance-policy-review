@@ -44,7 +44,10 @@ param connectorNamespaceLocation string = 'westcentralus'
 @description('URL of the Dataverse environment, for example https://org.crm.dynamics.com.')
 param dataverseEnvironmentUrl string = ''
 
-@description('Friendly Dataverse environment name, used when the URL is not set.')
+@description('Power Platform environment ID, used when the URL is not set.')
+param dataverseEnvironmentId string = ''
+
+@description('Friendly Dataverse environment name, used when the URL and ID are not set.')
 param dataverseEnvironmentName string = ''
 
 @description('Entity set name for the Policy Service Request table.')
@@ -253,6 +256,7 @@ output DATAVERSE_CONNECTOR_GATEWAY_NAME string = connectors.outputs.connectorGat
 output DATAVERSE_CONNECTION_NAME string = connectors.outputs.dataverseConnectionName
 output DATAVERSE_CONNECTION_ID string = connectors.outputs.dataverseConnectionId
 output DATAVERSE_ENVIRONMENT_URL string = dataverseEnvironmentUrl
+output DATAVERSE_ENVIRONMENT_ID string = dataverseEnvironmentId
 output DATAVERSE_ENVIRONMENT_NAME string = dataverseEnvironmentName
 output DATAVERSE_TABLE_NAME string = dataverseTableName
 output ENABLE_OUTLOOK_FALLBACK bool = enableOutlookFallback
