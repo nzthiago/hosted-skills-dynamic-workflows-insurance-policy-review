@@ -111,15 +111,19 @@ def test_combined_hooks_keep_dataverse_primary() -> None:
     assert "office365-policy-request-email" in disable
     assert "az resource delete" in disable
     for script in (eventgrid, eventgrid_powershell):
-        assert "policy-intake-normalized-main" in script
+        assert "policy-intake-main" in script
         assert "Microsoft.Storage.BlobCreated" in script
         assert "BlobDeleted" not in script
         assert "/blobs/normalized/" in script
-        assert "azurefunction" in script
-        assert "/functions/main" in script
+        assert "blobs_extension" in script
+        assert "/runtime/webhooks/blobs?functionName=main&code=" in script
+        assert "endpoint-type webhook" in script
+        assert "endpoint-type azurefunction" not in script
         assert "event-subscription show" in script
         assert "update" in script
         assert "create" in script
+        assert 'echo "$callback_url"' not in script
+        assert "Write-Host $callbackUrl" not in script
 
 
 def test_eventgrid_bash_creates_filtered_azure_function_subscription() -> None:
@@ -140,7 +144,10 @@ az() {
             printf '/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Storage/storageAccounts/sttest'
             ;;
         "resource show -g")
-            printf '/subscriptions/sub/resourceGroups/rg-test/providers/Microsoft.Web/sites/func-test'
+            printf 'func-test.azurewebsites.net'
+            ;;
+        "functionapp keys list")
+            printf 'blob-extension-key'
             ;;
         "eventgrid event-subscription show")
             return 1
@@ -164,10 +171,10 @@ az() {
     )
 
     assert result.returncode == 0
-    assert "--endpoint-type azurefunction" in result.stderr
+    assert "--endpoint-type webhook" in result.stderr
     assert (
-        "--endpoint /subscriptions/sub/resourceGroups/rg-test/providers/"
-        "Microsoft.Web/sites/func-test/functions/main"
+        "--endpoint https://func-test.azurewebsites.net/runtime/webhooks/"
+        "blobs?functionName=main&code=blob-extension-key"
     ) in result.stderr
     assert "--included-event-types Microsoft.Storage.BlobCreated" in result.stderr
     assert (

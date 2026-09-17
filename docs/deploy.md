@@ -61,9 +61,10 @@ The `postprovision` hook opens `connectors.azure.com` for interactive Dataverse 
 The `postdeploy` hook resolves the environment URL, obtains the `connector_extension`
 system key, and creates a five-minute `GetOnNewItems_V2` trigger without printing the
 callback URL. It also idempotently creates or updates an Event Grid subscription from
-the storage account to the `main` Function, filtered to `Microsoft.Storage.BlobCreated`
-events whose subject begins with
-`/blobServices/default/containers/policy-intake/blobs/normalized/`.
+the storage account to the Blob extension webhook for the `main` Function, filtered to
+`Microsoft.Storage.BlobCreated` events whose subject begins with
+`/blobServices/default/containers/policy-intake/blobs/normalized/`. The webhook callback
+contains the `blobs_extension` system key and is never printed.
 
 ## Enable Outlook fallback
 

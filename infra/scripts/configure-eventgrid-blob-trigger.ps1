@@ -4,7 +4,7 @@ $resourceGroup = azd env get-value AZURE_RESOURCE_GROUP_NAME
 $functionName = azd env get-value AZURE_FUNCTION_NAME
 $storageAccount = azd env get-value AZURE_STORAGE_ACCOUNT_NAME
 $containerName = azd env get-value POLICY_INTAKE_CONTAINER
-$subscriptionName = 'policy-intake-normalized-main'
+$subscriptionName = 'policy-intake-main'
 $subjectPrefix = "/blobServices/default/containers/$containerName/blobs/normalized/"
 
 $storageId = az storage account show `
@@ -16,16 +16,26 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($storageId)) {
     throw "Failed to resolve the policy intake storage account."
 }
 
-$functionAppId = az resource show `
+$functionHost = az resource show `
     -g $resourceGroup `
     -n $functionName `
     --resource-type Microsoft.Web/sites `
-    --query id `
+    --query properties.defaultHostName `
     -o tsv
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($functionAppId)) {
-    throw "Failed to resolve the Function App."
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($functionHost)) {
+    throw "Failed to resolve the Function App hostname."
 }
-$functionId = "$functionAppId/functions/main"
+
+$blobExtensionKey = az functionapp keys list `
+    -g $resourceGroup `
+    -n $functionName `
+    --query systemKeys.blobs_extension `
+    -o tsv
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($blobExtensionKey)) {
+    throw "The blobs_extension system key is unavailable. Confirm the Function App started successfully."
+}
+$encodedKey = [uri]::EscapeDataString($blobExtensionKey)
+$callbackUrl = "https://$functionHost/runtime/webhooks/blobs?functionName=main&code=$encodedKey"
 
 az eventgrid event-subscription show `
     --name $subscriptionName `
@@ -37,8 +47,8 @@ $operation = if ($LASTEXITCODE -eq 0) { 'update' } else { 'create' }
 az eventgrid event-subscription $operation `
     --name $subscriptionName `
     --source-resource-id $storageId `
-    --endpoint-type azurefunction `
-    --endpoint $functionId `
+    --endpoint-type webhook `
+    --endpoint $callbackUrl `
     --included-event-types Microsoft.Storage.BlobCreated `
     --subject-begins-with $subjectPrefix `
     --only-show-errors `
