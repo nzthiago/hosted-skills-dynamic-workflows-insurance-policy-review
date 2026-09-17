@@ -34,7 +34,10 @@ def test_infrastructure_defaults_to_created_row_dataverse_trigger() -> None:
     assert "param enableOutlookFallback bool = false" in main
     assert "OnNewEmailV3" in outlook_trigger
     assert "requestQueue" not in storage
-    assert "storageQueueDataContributorRoleId" not in rbac
+    assert "storageQueueDataContributorRoleId" in rbac
+    assert "974c5e8b-45b9-4653-ba55-5f855dd0fb88" in rbac
+    assert "resource appQueueRole" in rbac
+    assert "17d1049b-9a84-46fb-8f53-869881c3d3ab" not in rbac
 
 
 def test_dataverse_environment_id_is_local_configuration() -> None:
