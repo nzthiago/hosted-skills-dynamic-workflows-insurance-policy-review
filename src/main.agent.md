@@ -8,6 +8,7 @@ trigger:
   args:
     path: policy-intake/normalized/{name}.json
     connection: AzureWebJobsStorage
+    source: EventGrid
 mcp: false
 ---
 

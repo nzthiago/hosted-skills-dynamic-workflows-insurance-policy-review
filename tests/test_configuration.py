@@ -14,6 +14,7 @@ def test_agent_uses_manifest_blob_trigger_not_queue() -> None:
     agent = (ROOT / "src/main.agent.md").read_text()
     assert "type: blob_trigger" in agent
     assert "policy-intake/normalized/{name}.json" in agent
+    assert "source: EventGrid" in agent
     assert "queue_trigger" not in agent
 
 
