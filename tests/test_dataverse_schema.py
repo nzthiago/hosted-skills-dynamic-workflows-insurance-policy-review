@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -122,6 +123,86 @@ def test_pac_access_token_rejects_malformed_output() -> None:
         setup_dataverse_schema._extract_pac_access_token(
             "Microsoft Power Platform CLI\nAuthentication succeeded.\n"
         )
+
+
+def test_azure_cli_auth_requests_dataverse_resource(monkeypatch) -> None:
+    token = "eyJheader.payload_signature.token-signature"
+    calls = []
+
+    def fake_run_az(*args):
+        calls.append(args)
+        return token
+
+    monkeypatch.setattr(setup_dataverse_schema, "_run_az", fake_run_az)
+
+    assert setup_dataverse_schema._acquire_dataverse_access_token(
+        "https://example.crm.dynamics.com/",
+        "azure-cli",
+    ) == token
+    assert calls == [
+        (
+            "account",
+            "get-access-token",
+            "--resource",
+            "https://example.crm.dynamics.com",
+            "--query",
+            "accessToken",
+            "-o",
+            "tsv",
+        )
+    ]
+
+
+def test_azure_cli_auth_rejects_malformed_token_output(monkeypatch) -> None:
+    monkeypatch.setattr(
+        setup_dataverse_schema,
+        "_run_az",
+        lambda *args: "WARNING: authentication output was unavailable",
+    )
+
+    with pytest.raises(RuntimeError, match="Azure CLI.*exactly one JWT"):
+        setup_dataverse_schema._acquire_dataverse_access_token(
+            "https://example.crm.dynamics.com",
+            "azure-cli",
+        )
+
+
+def test_auto_auth_falls_back_to_azure_cli(monkeypatch, capsys) -> None:
+    token = "eyJheader.payload_signature.token-signature"
+
+    def failing_pac(*args):
+        raise subprocess.CalledProcessError(1, ["pac", *args])
+
+    monkeypatch.setattr(setup_dataverse_schema, "_run_pac", failing_pac)
+    monkeypatch.setattr(setup_dataverse_schema, "_run_az", lambda *args: token)
+
+    assert setup_dataverse_schema._acquire_dataverse_access_token(
+        "https://example.crm.dynamics.com",
+        "auto",
+    ) == token
+    assert "using Azure CLI authentication" in capsys.readouterr().err
+
+
+def test_explicit_pac_auth_remains_supported(monkeypatch) -> None:
+    token = "eyJheader.payload_signature.token-signature"
+    calls = []
+
+    def fake_run_pac(*args):
+        calls.append(args)
+        return token if args == ("auth", "token") else "Connected"
+
+    monkeypatch.setattr(setup_dataverse_schema, "_run_pac", fake_run_pac)
+    monkeypatch.setattr(
+        setup_dataverse_schema,
+        "_run_az",
+        lambda *args: pytest.fail("Azure CLI fallback must not run"),
+    )
+
+    assert setup_dataverse_schema._acquire_dataverse_access_token(
+        "https://example.crm.dynamics.com",
+        "pac",
+    ) == token
+    assert calls == [("auth", "who"), ("auth", "token")]
 
 
 def test_dataverse_request_uses_bearer_token(monkeypatch) -> None:

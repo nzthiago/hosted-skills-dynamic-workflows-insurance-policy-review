@@ -2,17 +2,22 @@
 
 ## Schema setup fails
 
-Confirm `pac auth who` targets the intended environment and that the account can create
-publishers, solutions, tables, and columns. Run a non-mutating check:
+Confirm the authenticated Azure CLI account can create publishers, solutions, tables, and
+columns. Run a non-mutating check:
 
 ```bash
 python scripts/setup_dataverse_schema.py \
   --environment-id "<complete environment ID>" \
+  --auth-source azure-cli \
   --verify-only
 ```
 
-The script reports missing or incompatible schema components and never logs the PAC
-access token.
+If PAC authentication is permitted, use `--auth-source pac` and confirm `pac auth who`
+targets the intended environment. Corporate Conditional Access policies can block PAC
+device-code authentication; use the Azure CLI path in that case.
+
+The script reports missing or incompatible schema components and never logs access
+tokens from either authentication source.
 
 If environment resolution fails, confirm Azure CLI is signed in and that Global
 Discovery returns the ID. Use `--environment-url` only when the organization URL is

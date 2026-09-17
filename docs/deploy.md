@@ -3,7 +3,8 @@
 ## Prerequisites
 
 - Existing Dataverse environment and customization permissions
-- Power Platform CLI for reproducible schema setup
+- Azure CLI authentication with Dataverse customization permissions
+- Optional Power Platform CLI when PAC authentication is permitted by tenant policy
 - Dataverse connector identity with Global Read on the Policy Service Request table
 - Azure subscription and role-assignment permissions
 - Python 3.13, Azure Developer CLI, and Azure CLI
@@ -16,9 +17,18 @@ changed with `CONNECTOR_NAMESPACE_LOCATION`.
 
 ```bash
 az login --tenant "<tenant ID>"
+python scripts/setup_dataverse_schema.py \
+  --environment-id "<complete environment ID>" \
+  --auth-source azure-cli
+```
+
+PAC remains available for non-corporate environments:
+
+```bash
 pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
 python scripts/setup_dataverse_schema.py \
-  --environment-id "<complete environment ID>"
+  --environment-id "<complete environment ID>" \
+  --auth-source pac
 ```
 
 Grant the connector authorization account Global Read on

@@ -7,6 +7,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,6 +16,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "dataverse" / "policy-service-request.schema.json"
+JWT_PATTERN = re.compile(
+    r"^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
+)
 PAC_TOKEN_LINE_PATTERN = re.compile(
     r"^(?:Token:\s*)?"
     r"(eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$"
@@ -49,10 +53,23 @@ def _extract_pac_access_token(output: str) -> str:
     return tokens[0]
 
 
+def _extract_azure_cli_access_token(output: str) -> str:
+    tokens = [
+        line.strip()
+        for line in output.splitlines()
+        if JWT_PATTERN.fullmatch(line.strip())
+    ]
+    if len(tokens) != 1:
+        raise RuntimeError(
+            "Azure CLI did not return exactly one JWT access token."
+        )
+    return tokens[0]
+
+
 def _run_az(*args: str) -> str:
     if shutil.which("az") is None:
         raise RuntimeError(
-            "Azure CLI is required to resolve a Dataverse environment ID or name."
+            "Azure CLI is required to resolve Dataverse environments or acquire tokens."
         )
     result = subprocess.run(
         ["az", *args],
@@ -61,6 +78,37 @@ def _run_az(*args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _acquire_dataverse_access_token(
+    environment_url: str,
+    auth_source: str,
+) -> str:
+    if auth_source in {"auto", "pac"}:
+        try:
+            _run_pac("auth", "who")
+            return _extract_pac_access_token(_run_pac("auth", "token"))
+        except (RuntimeError, subprocess.CalledProcessError) as exc:
+            if auth_source == "pac":
+                raise RuntimeError(
+                    "Power Platform CLI authentication failed."
+                ) from exc
+            print(
+                "PAC authentication unavailable; using Azure CLI authentication.",
+                file=sys.stderr,
+            )
+
+    output = _run_az(
+        "account",
+        "get-access-token",
+        "--resource",
+        environment_url.rstrip("/"),
+        "--query",
+        "accessToken",
+        "-o",
+        "tsv",
+    )
+    return _extract_azure_cli_access_token(output)
 
 
 def _select_environment_url(
@@ -445,6 +493,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA)
     parser.add_argument(
+        "--auth-source",
+        choices=("auto", "pac", "azure-cli"),
+        default="auto",
+        help=(
+            "Authentication source for Dataverse. Auto tries PAC first, then "
+            "falls back to the current Azure CLI login."
+        ),
+    )
+    parser.add_argument(
         "--verify-only",
         action="store_true",
         help="Fail if the publisher, solution, table, or required columns are absent.",
@@ -461,8 +518,7 @@ def main() -> None:
             environment_id=args.environment_id,
             environment_name=args.environment_name,
         )
-    _run_pac("auth", "who")
-    token = _extract_pac_access_token(_run_pac("auth", "token"))
+    token = _acquire_dataverse_access_token(environment_url, args.auth_source)
     ensure_schema(
         environment_url.rstrip("/"),
         token,

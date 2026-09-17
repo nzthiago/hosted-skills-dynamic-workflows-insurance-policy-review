@@ -48,25 +48,31 @@ application still requires and validates a non-empty Request ID before starting 
 - Existing Dataverse/Power Platform environment
 - Account with permission to customize the environment
 - Connector authorization account with Global Read on the sample table
-- [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
 - Azure subscription, Azure Developer CLI, Azure CLI, Python 3.13, and
   [uv](https://docs.astral.sh/uv/)
+- Optional: [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
+  when PAC authentication is permitted by tenant policy
 
 ## Create or verify the table
 
-Select the target environment and authenticate interactively. The environment ID is the
+Select the target environment and authenticate with Azure CLI. The environment ID is the
 stable input shown in the Power Apps environment URL:
 
 ```bash
 az login --tenant "<tenant ID>"
-pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
 python scripts/setup_dataverse_schema.py \
-  --environment-id "<complete environment ID>"
+  --environment-id "<complete environment ID>" \
+  --auth-source azure-cli
 ```
 
 Copy the complete environment ID without removing prefixes such as `Default-`.
 Azure CLI must be signed in to the tenant that contains the environment so Global
 Discovery can resolve it.
+
+For environments where PAC authentication is allowed, authenticate with
+`pac auth create --environment "<environment ID or URL>"` and pass
+`--auth-source pac`. The default `--auth-source auto` tries PAC first and falls back to
+the current Azure CLI login.
 
 The script uses
 [`dataverse/policy-service-request.schema.json`](dataverse/policy-service-request.schema.json)
@@ -75,9 +81,9 @@ and the eight structured fields. For ID or friendly-name input it uses Dataverse
 Discovery to resolve the organization URL. It never creates file columns or stores
 credentials. Re-run with `--verify-only` for a non-mutating preflight.
 
-If PAC CLI is unavailable, create the same table in an unmanaged solution at
-[Power Apps](https://make.preview.powerapps.com/environments), using the logical names
-from the schema file.
+If neither CLI authentication path is available, create the same table in an unmanaged
+solution at [Power Apps](https://make.preview.powerapps.com/environments), using the
+logical names from the schema file.
 
 ## Deploy and authorize
 
