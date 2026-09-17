@@ -116,12 +116,15 @@ def test_combined_hooks_keep_dataverse_primary() -> None:
         assert "BlobDeleted" not in script
         assert "/blobs/normalized/" in script
         assert "blobs_extension" in script
-        assert "/runtime/webhooks/blobs?functionName=main&code=" in script
+        assert "Host.Functions.main" in script
+        assert "/runtime/webhooks/blobs?functionName=" in script
         assert "endpoint-type webhook" in script
         assert "endpoint-type azurefunction" not in script
         assert "event-subscription show" in script
-        assert "update" in script
+        assert "event-subscription delete" in script
         assert "create" in script
+        assert "include-full-endpoint-url" in script
+        assert "subscription verification failed" in script.lower()
         assert 'echo "$callback_url"' not in script
         assert "Write-Host $callbackUrl" not in script
 
@@ -148,11 +151,32 @@ az() {
         "resource show -g")
             printf 'func-test.azurewebsites.net'
             ;;
+        "functionapp function show")
+            printf 'EventGrid'
+            ;;
         "functionapp keys list")
             printf 'blob-extension-key'
             ;;
         "eventgrid event-subscription show")
-            return 1
+            case "$*" in
+                *"--include-full-endpoint-url"*)
+                    printf '%s' \
+                        'https://func-test.azurewebsites.net/runtime/webhooks/' \
+                        'blobs?functionName=Host.Functions.main&code=' \
+                        'blob-extension-key'
+                    ;;
+                *"filter.subjectBeginsWith"*)
+                    printf '%s' \
+                        '/blobServices/default/containers/' \
+                        'policy-intake/blobs/normalized/'
+                    ;;
+                *"filter.includedEventTypes"*)
+                    printf 'Microsoft.Storage.BlobCreated'
+                    ;;
+                *)
+                    return 1
+                    ;;
+            esac
             ;;
         "eventgrid event-subscription create")
             printf '%s\n' "$*" >&2
@@ -176,13 +200,83 @@ az() {
     assert "--endpoint-type webhook" in result.stderr
     assert (
         "--endpoint https://func-test.azurewebsites.net/runtime/webhooks/"
-        "blobs?functionName=main&code=blob-extension-key"
+        "blobs?functionName=Host.Functions.main&code=blob-extension-key"
     ) in result.stderr
     assert "--included-event-types Microsoft.Storage.BlobCreated" in result.stderr
     assert (
         "--subject-begins-with /blobServices/default/containers/"
         "policy-intake/blobs/normalized/"
     ) in result.stderr
+
+
+def test_eventgrid_bash_recreates_existing_subscription() -> None:
+    script = ROOT / "infra/scripts/configure-eventgrid-blob-trigger.sh"
+    command = """
+azd() {
+    case "$3" in
+        AZURE_RESOURCE_GROUP_NAME) printf 'rg-test' ;;
+        AZURE_FUNCTION_NAME) printf 'func-test' ;;
+        AZURE_STORAGE_ACCOUNT_NAME) printf 'sttest' ;;
+        POLICY_INTAKE_CONTAINER) printf 'policy-intake' ;;
+        *) return 1 ;;
+    esac
+}
+az() {
+    case "$1 $2 $3" in
+        "storage account show")
+            printf '/subscriptions/sub/resourceGroups/rg-test/providers/' \
+                'Microsoft.Storage/storageAccounts/sttest'
+            ;;
+        "resource show -g")
+            printf 'func-test.azurewebsites.net'
+            ;;
+        "functionapp function show")
+            printf 'EventGrid'
+            ;;
+        "functionapp keys list")
+            printf 'blob-extension-key'
+            ;;
+        "eventgrid event-subscription show")
+            case "$*" in
+                *"--include-full-endpoint-url"*)
+                    printf '%s' \
+                        'https://func-test.azurewebsites.net/runtime/webhooks/' \
+                        'blobs?functionName=Host.Functions.main&code=' \
+                        'blob-extension-key'
+                    ;;
+                *"filter.subjectBeginsWith"*)
+                    printf '%s' \
+                        '/blobServices/default/containers/' \
+                        'policy-intake/blobs/normalized/'
+                    ;;
+                *"filter.includedEventTypes"*)
+                    printf 'Microsoft.Storage.BlobCreated'
+                    ;;
+                *) return 0 ;;
+            esac
+            ;;
+        "eventgrid event-subscription delete"|"eventgrid event-subscription create")
+            printf '%s\n' "$*" >&2
+            ;;
+        *)
+            printf 'unexpected az command: %s\n' "$*" >&2
+            return 98
+            ;;
+    esac
+}
+. "$1"
+"""
+    result = subprocess.run(
+        ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "event-subscription delete" in result.stderr
+    assert "--source-resource-id" in result.stderr
+    assert "--endpoint-type webhook" in result.stderr
 
 
 def test_disable_outlook_bash_skips_missing_fresh_environment_outputs() -> None:

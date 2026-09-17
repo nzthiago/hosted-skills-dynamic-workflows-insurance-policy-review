@@ -22,9 +22,9 @@ tokens from either authentication source.
 ## A normalized manifest does not start the workflow
 
 Flex Consumption requires Event Grid delivery for Blob triggers. Re-run `azd deploy api`
-so the postdeploy hook creates or updates `policy-intake-main`. The subscription must use
-the Blob extension webhook for `main`, include only `Microsoft.Storage.BlobCreated`, and
-use the subject prefix
+so the postdeploy hook recreates and verifies `policy-intake-main`. The subscription
+must use the Blob extension webhook for `Host.Functions.main`, include only
+`Microsoft.Storage.BlobCreated`, and use the subject prefix
 `/blobServices/default/containers/policy-intake/blobs/normalized/`.
 
 If environment resolution fails, confirm Azure CLI is signed in and that Global

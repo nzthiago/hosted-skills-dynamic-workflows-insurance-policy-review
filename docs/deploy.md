@@ -60,9 +60,11 @@ connection. Dataverse does not use connector actions or an MCP server.
 The `postprovision` hook opens `connectors.azure.com` for interactive Dataverse OAuth.
 The `postdeploy` hook resolves the environment URL, obtains the `connector_extension`
 system key, and creates a five-minute `GetOnNewItems_V2` trigger without printing the
-callback URL. It also idempotently creates or updates an Event Grid subscription from
-the storage account to the Blob extension webhook for the `main` Function, filtered to
-`Microsoft.Storage.BlobCreated` events whose subject begins with
+callback URL. It also waits for the `main` Event Grid Blob trigger to register, then
+recreates and verifies an Event Grid subscription from the storage account to the Blob
+extension webhook for `Host.Functions.main`. Recreation is required because Event Grid
+does not update an existing subscription's endpoint URL. The subscription is filtered
+to `Microsoft.Storage.BlobCreated` events whose subject begins with
 `/blobServices/default/containers/policy-intake/blobs/normalized/`. The webhook callback
 contains the `blobs_extension` system key and is never printed.
 
