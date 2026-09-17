@@ -306,14 +306,11 @@ def ensure_schema(
             },
         )
 
+    table_resource = f"EntityDefinitions(LogicalName='{table['logicalName']}')"
     table_query = urllib.parse.urlencode({
         "$select": "LogicalName,EntitySetName,OwnershipType",
-        "$expand": (
-            "Attributes($select=LogicalName,AttributeType,MaxLength,"
-            "RequiredLevel,IsPrimaryName)"
-        ),
     })
-    table_path = f"EntityDefinitions(LogicalName='{table['logicalName']}')?{table_query}"
+    table_path = f"{table_resource}?{table_query}"
     existing = _request(
         environment_url,
         token,
@@ -355,7 +352,27 @@ def ensure_schema(
             raise RuntimeError(
                 "The existing Policy Service Request table must be organization-owned."
             )
-        attributes = existing.get("Attributes")
+        attribute_query = urllib.parse.urlencode({
+            "$select": (
+                "LogicalName,AttributeType,MaxLength,RequiredLevel,IsPrimaryName"
+            ),
+        })
+        attribute_path = (
+            f"{table_resource}/Attributes/"
+            "Microsoft.Dynamics.CRM.StringAttributeMetadata"
+            f"?{attribute_query}"
+        )
+        attribute_response = _request(
+            environment_url,
+            token,
+            "GET",
+            attribute_path,
+        )
+        attributes = (
+            attribute_response.get("value")
+            if isinstance(attribute_response, dict)
+            else None
+        )
         if not isinstance(attributes, list):
             raise RuntimeError("Dataverse did not return the table attributes.")
         actual = {

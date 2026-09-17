@@ -163,14 +163,18 @@ def test_verify_rejects_incompatible_existing_column(monkeypatch) -> None:
     )
 
     def fake_request(*args, **kwargs):
+        path = args[3]
+        if "/Attributes/" not in path:
+            return {
+                "EntitySetName": "ipr_policyservicerequests",
+                "OwnershipType": "OrganizationOwned",
+            }
         return {
-            "EntitySetName": "ipr_policyservicerequests",
-            "OwnershipType": "OrganizationOwned",
-            "Attributes": [
+            "value": [
                 {
                     "LogicalName": column["logicalName"],
-                    "AttributeType": "Integer",
-                    "MaxLength": column["maxLength"],
+                    "AttributeType": "String",
+                    "MaxLength": column["maxLength"] + 1,
                     "RequiredLevel": {
                         "Value": (
                             "None"
@@ -192,3 +196,56 @@ def test_verify_rejects_incompatible_existing_column(monkeypatch) -> None:
             schema,
             verify_only=True,
         )
+
+
+def test_verify_reads_string_attributes_from_typed_metadata_path(
+    monkeypatch,
+) -> None:
+    schema = json.loads(SCHEMA_PATH.read_text())
+    monkeypatch.setattr(
+        setup_dataverse_schema,
+        "_find",
+        lambda *args: "00000000-0000-0000-0000-000000000001",
+    )
+    paths = []
+
+    def fake_request(*args, **kwargs):
+        path = args[3]
+        paths.append(path)
+        if "/Attributes/" not in path:
+            return {
+                "EntitySetName": "ipr_policyservicerequests",
+                "OwnershipType": "OrganizationOwned",
+            }
+        return {
+            "value": [
+                {
+                    "LogicalName": column["logicalName"],
+                    "AttributeType": column["type"],
+                    "MaxLength": column["maxLength"],
+                    "RequiredLevel": {
+                        "Value": (
+                            "None"
+                            if column.get("required", True) is False
+                            else "ApplicationRequired"
+                        )
+                    },
+                    "IsPrimaryName": bool(column.get("primaryName")),
+                }
+                for column in schema["table"]["columns"]
+            ]
+        }
+
+    monkeypatch.setattr(setup_dataverse_schema, "_request", fake_request)
+    setup_dataverse_schema.ensure_schema(
+        "https://example.crm.dynamics.com",
+        "token",
+        schema,
+        verify_only=True,
+    )
+
+    assert any(
+        "/Attributes/Microsoft.Dynamics.CRM.StringAttributeMetadata?"
+        in path
+        for path in paths
+    )
