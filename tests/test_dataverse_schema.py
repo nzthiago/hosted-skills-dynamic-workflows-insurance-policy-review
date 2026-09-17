@@ -76,6 +76,27 @@ def test_environment_resolution_rejects_unknown_id() -> None:
         )
 
 
+def test_pac_access_token_ignores_banner_output() -> None:
+    token = "eyJheader.payload_signature.token-signature"
+    output = (
+        "Microsoft Power Platform CLI\n"
+        "Version: 2.12.2\n"
+        "Authenticated as insurance-policy-e2e-mi\u202fto Dataverse\n"
+        "\n"
+        f"{token}\n"
+        "Telemetry collection is enabled.\n"
+    )
+
+    assert setup_dataverse_schema._extract_pac_access_token(output) == token
+
+
+def test_pac_access_token_rejects_malformed_output() -> None:
+    with pytest.raises(RuntimeError, match="exactly one JWT"):
+        setup_dataverse_schema._extract_pac_access_token(
+            "Microsoft Power Platform CLI\nAuthentication succeeded.\n"
+        )
+
+
 def test_dataverse_request_uses_bearer_token(monkeypatch) -> None:
     captured = {}
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import urllib.error
@@ -14,6 +15,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SCHEMA = ROOT / "dataverse" / "policy-service-request.schema.json"
+JWT_PATTERN = re.compile(
+    r"^eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$"
+)
 
 
 def _run_pac(*args: str) -> str:
@@ -29,6 +33,19 @@ def _run_pac(*args: str) -> str:
         text=True,
     )
     return result.stdout.strip()
+
+
+def _extract_pac_access_token(output: str) -> str:
+    tokens = [
+        line.strip()
+        for line in output.splitlines()
+        if JWT_PATTERN.fullmatch(line.strip())
+    ]
+    if len(tokens) != 1:
+        raise RuntimeError(
+            "Power Platform CLI did not return exactly one JWT access token."
+        )
+    return tokens[0]
 
 
 def _run_az(*args: str) -> str:
@@ -427,9 +444,7 @@ def main() -> None:
             environment_name=args.environment_name,
         )
     _run_pac("auth", "who")
-    token = _run_pac("auth", "token")
-    if not token:
-        raise RuntimeError("Power Platform CLI returned an empty access token.")
+    token = _extract_pac_access_token(_run_pac("auth", "token"))
     ensure_schema(
         environment_url.rstrip("/"),
         token,
