@@ -13,6 +13,14 @@ uv run --with-requirements requirements.txt \
   --wait
 ```
 
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "<azd environment>" `
+  --signed-request-status received `
+  --wait
+```
+
 ## Missing document
 
 Set Signed request status to `missing`. The report identifies `signed_request` as
@@ -28,6 +36,14 @@ uv run --with-requirements requirements.txt \
   python scripts/create_dataverse_request.py \
   --azd-environment "<azd environment>" \
   --driver-licence-status expired \
+  --wait
+```
+
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "<azd environment>" `
+  --driver-licence-status expired `
   --wait
 ```
 

@@ -26,13 +26,14 @@ PAC_TOKEN_LINE_PATTERN = re.compile(
 
 
 def _run_pac(*args: str) -> str:
-    if shutil.which("pac") is None:
+    pac_path = shutil.which("pac")
+    if pac_path is None:
         raise RuntimeError(
             "Power Platform CLI is required. Install it, then run "
             "'pac auth create --environment <environment>'."
         )
     result = subprocess.run(
-        ["pac", *args],
+        [pac_path, *args],
         check=True,
         capture_output=True,
         text=True,
@@ -67,12 +68,13 @@ def _extract_azure_cli_access_token(output: str) -> str:
 
 
 def _run_az(*args: str) -> str:
-    if shutil.which("az") is None:
+    az_path = shutil.which("az")
+    if az_path is None:
         raise RuntimeError(
             "Azure CLI is required to resolve Dataverse environments or acquire tokens."
         )
     result = subprocess.run(
-        ["az", *args],
+        [az_path, *args],
         check=True,
         capture_output=True,
         text=True,

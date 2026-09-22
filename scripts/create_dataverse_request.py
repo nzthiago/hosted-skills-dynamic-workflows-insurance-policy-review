@@ -32,9 +32,10 @@ SAFE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def _azd_value(key: str, environment: str | None) -> str | None:
-    if shutil.which("azd") is None:
+    azd_path = shutil.which("azd")
+    if azd_path is None:
         return None
-    command = ["azd", "env", "get-value", key, "-C", str(ROOT), "--no-prompt"]
+    command = [azd_path, "env", "get-value", key, "-C", str(ROOT), "--no-prompt"]
     if environment:
         command.extend(["--environment", environment])
     result = subprocess.run(

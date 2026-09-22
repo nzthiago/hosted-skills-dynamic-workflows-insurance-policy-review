@@ -13,6 +13,11 @@ The Function region must support Flex Consumption, Durable Task Scheduler, and t
 configured Foundry model. The Connector Namespace defaults to `westcentralus` and can be
 changed with `CONNECTOR_NAMESPACE_LOCATION`.
 
+Bash blocks below work on macOS/Linux/zsh. Windows blocks use PowerShell 7+ (`pwsh`) with
+backtick line continuation; no WSL is required, and `azd`'s per-OS hooks
+(`azure.yaml`) already run the matching `.ps1` script on Windows and `.sh` script on
+Bash/zsh.
+
 ## Prepare Dataverse
 
 ```bash
@@ -22,12 +27,26 @@ python scripts/setup_dataverse_schema.py \
   --auth-source azure-cli
 ```
 
+```powershell
+az login --tenant "<tenant ID>"
+python scripts/setup_dataverse_schema.py `
+  --environment-id "<complete environment ID>" `
+  --auth-source azure-cli
+```
+
 PAC remains available for non-corporate environments:
 
 ```bash
 pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
 python scripts/setup_dataverse_schema.py \
   --environment-id "<complete environment ID>" \
+  --auth-source pac
+```
+
+```powershell
+pac auth create --environment "<environment ID or URL>" --name insurance-policy-sample
+python scripts/setup_dataverse_schema.py `
+  --environment-id "<complete environment ID>" `
   --auth-source pac
 ```
 
@@ -80,6 +99,14 @@ uv run --with-requirements requirements.txt \
   python scripts/create_dataverse_request.py \
   --azd-environment "<azd environment>" \
   --wait \
+  --download-report
+```
+
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "<azd environment>" `
+  --wait `
   --download-report
 ```
 

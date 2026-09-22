@@ -53,6 +53,14 @@ application still requires and validates a non-empty Request ID before starting 
 - Optional: [Power Platform CLI](https://learn.microsoft.com/power-platform/developer/cli/introduction)
   when PAC authentication is permitted by tenant policy
 
+Every command in this README works from Windows Terminal with PowerShell 7+ (`pwsh`),
+macOS/Linux Bash, or zsh. Commands that need a different line-continuation character or
+quoting on Windows show a PowerShell block immediately after the Bash block. Install
+Azure CLI, `azd`, Python 3.13, and `uv` for Windows from their standard installers (MSI
+or `winget`); no WSL is required. Interactive steps — `az login`, `azd auth login`, and
+the connector `postprovision` authorization hook — open your default browser the same way
+on Windows as on macOS/Linux.
+
 ## Create or verify the table
 
 Select the target environment and authenticate with Azure CLI. The environment ID is the
@@ -62,6 +70,13 @@ stable input shown in the Power Apps environment URL:
 az login --tenant "<tenant ID>"
 python scripts/setup_dataverse_schema.py \
   --environment-id "<complete environment ID>" \
+  --auth-source azure-cli
+```
+
+```powershell
+az login --tenant "<tenant ID>"
+python scripts/setup_dataverse_schema.py `
+  --environment-id "<complete environment ID>" `
   --auth-source azure-cli
 ```
 
@@ -152,6 +167,14 @@ Request ID first prevents the other path from starting a duplicate workflow.
      --download-report
    ```
 
+   ```powershell
+   uv run --with-requirements requirements.txt `
+     python scripts/create_dataverse_request.py `
+     --azd-environment "<azd environment>" `
+     --wait `
+     --download-report
+   ```
+
    The corporate Conditional Access-friendly default reuses the current Azure CLI login
    for Dataverse and Blob Storage. It never prints access tokens. Environment URL/ID,
    table name, storage URL, and container names are read from ignored azd state. Supply
@@ -177,6 +200,14 @@ Request ID first prevents the other path from starting a duplicate workflow.
      --output "output/<request-id>.html"
    ```
 
+   ```powershell
+   $env:POLICY_REVIEW_STORAGE_URL = azd env get-value POLICY_REVIEW_STORAGE_URL -e "<azd environment>"
+   $env:POLICY_REVIEW_CONTAINER = azd env get-value POLICY_REVIEW_CONTAINER -e "<azd environment>"
+   uv run --with-requirements requirements.txt python scripts/demo.py download `
+     --blob "reviews/<request-id>.html" `
+     --output "output/<request-id>.html"
+   ```
+
 Omit `--request-id` to generate a unique value for every run. To control the scenario,
 set `--policy-id`, `--driver-name`, `--driver-licence-status`, and
 `--signed-request-status`. The script checks for an existing Request ID before POSTing
@@ -192,6 +223,14 @@ export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)
 export POLICY_INTAKE_CONTAINER="$(azd env get-value POLICY_INTAKE_CONTAINER)"
 uv run --with-requirements requirements.txt \
   python scripts/demo.py submit-manual \
+  --request examples/policy-service-request.json
+```
+
+```powershell
+$env:POLICY_REVIEW_STORAGE_URL = azd env get-value POLICY_REVIEW_STORAGE_URL
+$env:POLICY_INTAKE_CONTAINER = azd env get-value POLICY_INTAKE_CONTAINER
+uv run --with-requirements requirements.txt `
+  python scripts/demo.py submit-manual `
   --request examples/policy-service-request.json
 ```
 
@@ -213,6 +252,22 @@ docker run --rm --name dts-emulator \
   mcr.microsoft.com/dts/dts-emulator:latest
 cd src && uv run --with-requirements requirements.txt func start
 ```
+
+```powershell
+Copy-Item src/local.settings.template.json src/local.settings.json
+az login
+azurite --silent --skipApiVersionCheck --location .azurite
+docker run --rm --name dts-emulator `
+  -e DTS_TASK_HUB_NAMES=policyreviews `
+  -p 8080:8080 -p 8082:8082 `
+  mcr.microsoft.com/dts/dts-emulator:latest
+cd src
+uv run --with-requirements requirements.txt func start
+```
+
+Run each emulator/tool in its own terminal tab. On Windows, Docker Desktop must be
+running (any backend) before the `docker run` command; no direct WSL interaction is
+required.
 
 Connector callbacks require a deployed Function App. Test the local workflow with the
 manual fallback.

@@ -5,6 +5,15 @@ time, and recover cleanly if the Dataverse poll runs long. For setup and
 concepts, see [How it works](how-it-works.md), [Deploy](deploy.md), and
 [Troubleshooting](troubleshooting.md).
 
+**Stage shell: Windows Terminal running PowerShell 7+ (`pwsh`).** Every command
+below is written PowerShell-first because the live session runs from a Windows
+laptop. A Bash/zsh equivalent follows in parentheses or a secondary block where
+the syntax differs (line continuation, environment variables); the underlying
+CLI flags are identical on every OS. No WSL is required — Azure CLI, `azd`,
+Python, and `uv` all install as native Windows binaries, and `azd`'s hooks
+already select the matching `.ps1` script on Windows automatically
+(`azure.yaml`).
+
 ## Thesis (say this, remember this)
 
 > The same connector contract can carry a document to a card, or a business
@@ -50,9 +59,10 @@ since row creation — comfortably past one five-minute poll.
 
 **Logins refreshed before walking on stage:**
 
-- `az login --tenant "<tenant ID>"` completed within the last hour
-- `azd auth login` completed
-- Power Apps / Dataverse portal session active (not just cached)
+- `az login --tenant "<tenant ID>"` completed within the last hour (opens the
+  default browser on Windows, same as macOS/Linux).
+- `azd auth login` completed.
+- Power Apps / Dataverse portal session active (not just cached).
 
 **Warmed resources:**
 
@@ -70,7 +80,8 @@ since row creation — comfortably past one five-minute poll.
 
 **Terminal:**
 
-- One terminal window, one tab, font size bumped for the room (18pt+).
+- Windows Terminal, one tab, PowerShell 7+ (`pwsh`) profile pinned as default,
+  font size bumped for the room (18pt+).
 - Working directory already at the repository root.
 - Command history cleared of any environment-specific values; retype the
   `--azd-environment` flag live rather than relying on shell history/autocomplete
@@ -157,8 +168,9 @@ narrating:
    clearly: *"here's a run from rehearsal, same path, already completed."*
 3. **Use the E2E script's manual path.** Run
    `uv run --with-requirements requirements.txt python scripts/demo.py submit-manual --request examples/policy-service-request.json`
-   to write the same normalized manifest directly, bypassing the connector
-   poll entirely, and continue narrating from the Blob/DTS/report steps.
+   (identical in PowerShell and Bash/zsh — no line continuation needed) to write
+   the same normalized manifest directly, bypassing the connector poll
+   entirely, and continue narrating from the Blob/DTS/report steps.
 4. **Show the known-good report.** If Blob Storage, Event Grid, or DTS are
    unreachable, open the downloaded `output/<request-id>.html` from your own
    device — no network dependency.
@@ -171,6 +183,16 @@ narrating:
 Every rehearsal and every live attempt must use a **new, unique Request ID** —
 duplicate IDs are rejected by design and won't start a new review.
 
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "<your-azd-environment-name>" `
+  --wait `
+  --download-report
+```
+
+Bash/zsh equivalent (same flags, backslash continuation):
+
 ```bash
 uv run --with-requirements requirements.txt \
   python scripts/create_dataverse_request.py \
@@ -182,11 +204,11 @@ uv run --with-requirements requirements.txt \
 Example, using a previously validated environment name as a concrete
 reference only (substitute your own):
 
-```bash
-uv run --with-requirements requirements.txt \
-  python scripts/create_dataverse_request.py \
-  --azd-environment "ipr-dv-e2e-0917" \
-  --wait \
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "ipr-dv-e2e-0917" `
+  --wait `
   --download-report
 ```
 
@@ -198,9 +220,9 @@ uv run --with-requirements requirements.txt \
   five-minute connector poll.
 - To re-download a report from an earlier run:
 
-  ```bash
-  uv run --with-requirements requirements.txt python scripts/demo.py download \
-    --blob "reviews/<request-id>.html" \
+  ```powershell
+  uv run --with-requirements requirements.txt python scripts/demo.py download `
+    --blob "reviews/<request-id>.html" `
     --output "output/<request-id>.html"
   ```
 

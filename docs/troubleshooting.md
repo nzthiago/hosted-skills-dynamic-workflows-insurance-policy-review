@@ -12,6 +12,13 @@ python scripts/setup_dataverse_schema.py \
   --verify-only
 ```
 
+```powershell
+python scripts/setup_dataverse_schema.py `
+  --environment-id "<complete environment ID>" `
+  --auth-source azure-cli `
+  --verify-only
+```
+
 If PAC authentication is permitted, use `--auth-source pac` and confirm `pac auth who`
 targets the intended environment. Corporate Conditional Access policies can block PAC
 device-code authentication; use the Azure CLI path in that case.
@@ -58,6 +65,13 @@ processing:
 uv run --with-requirements requirements.txt \
   python scripts/create_dataverse_request.py \
   --azd-environment "<azd environment>" \
+  --wait
+```
+
+```powershell
+uv run --with-requirements requirements.txt `
+  python scripts/create_dataverse_request.py `
+  --azd-environment "<azd environment>" `
   --wait
 ```
 

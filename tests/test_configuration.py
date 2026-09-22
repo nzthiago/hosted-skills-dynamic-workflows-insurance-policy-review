@@ -162,6 +162,103 @@ az() {
     assert "az must not configure" not in result.stderr
 
 
+def test_dataverse_trigger_powershell_uses_resolved_function_hostname() -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("PowerShell is not installed.")
+    script = ROOT / "infra/scripts/configure-dataverse-trigger.ps1"
+    command = """
+function global:azd {
+    if ($args[0] -eq 'env' -and $args[1] -eq 'set') {
+        return
+    }
+    switch ($args[2]) {
+        'AZURE_RESOURCE_GROUP_NAME' { return 'rg-test' }
+        'AZURE_FUNCTION_NAME' { return 'func-test' }
+        'DATAVERSE_CONNECTOR_GATEWAY_NAME' { return 'gateway-test' }
+        'DATAVERSE_CONNECTION_NAME' { return 'connection-test' }
+        'DATAVERSE_ENVIRONMENT_URL' { return 'https://org.crm.dynamics.com' }
+        'DATAVERSE_ENVIRONMENT_ID' { return '' }
+        'DATAVERSE_ENVIRONMENT_NAME' { return '' }
+        'DATAVERSE_TABLE_NAME' { return 'ipr_policyservicerequests' }
+        default { throw "unexpected azd command: $($args -join ' ')" }
+    }
+}
+function global:az {
+    $joined = $args -join ' '
+    if ($joined -match '^resource show -g ') {
+        $global:LASTEXITCODE = 0
+        return 'func-test.custom.azurewebsites.net'
+    }
+    if ($joined -match '^functionapp keys list ') {
+        $global:LASTEXITCODE = 0
+        return 'connector-key'
+    }
+    if ($joined -match '^deployment group create ') {
+        $global:LASTEXITCODE = 0
+        [Console]::Error.WriteLine($joined)
+        return
+    }
+    $global:LASTEXITCODE = 98
+    [Console]::Error.WriteLine("unexpected az command: $joined")
+}
+& $args[0]
+"""
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", command, str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert (
+        "callbackUrl=https://func-test.custom.azurewebsites.net/runtime/webhooks/"
+        "connector?functionName=DataversePolicyIntake&code=connector-key"
+    ) in result.stderr
+    assert "https://func-test.azurewebsites.net" not in result.stderr
+
+
+def test_dataverse_trigger_powershell_rejects_missing_function_hostname() -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("PowerShell is not installed.")
+    script = ROOT / "infra/scripts/configure-dataverse-trigger.ps1"
+    command = """
+function global:azd {
+    switch ($args[2]) {
+        'AZURE_RESOURCE_GROUP_NAME' { return 'rg-test' }
+        'AZURE_FUNCTION_NAME' { return 'func-test' }
+        'DATAVERSE_CONNECTOR_GATEWAY_NAME' { return 'gateway-test' }
+        'DATAVERSE_CONNECTION_NAME' { return 'connection-test' }
+        'DATAVERSE_ENVIRONMENT_URL' { return 'https://org.crm.dynamics.com' }
+        'DATAVERSE_ENVIRONMENT_ID' { return '' }
+        'DATAVERSE_ENVIRONMENT_NAME' { return '' }
+        'DATAVERSE_TABLE_NAME' { return 'ipr_policyservicerequests' }
+        default { throw "unexpected azd command: $($args -join ' ')" }
+    }
+}
+function global:az {
+    $joined = $args -join ' '
+    if ($joined -match '^resource show -g ') {
+        $global:LASTEXITCODE = 0
+        return ''
+    }
+    [Console]::Error.WriteLine("az must not configure a trigger without a hostname")
+    $global:LASTEXITCODE = 99
+}
+& $args[0]
+"""
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", command, str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Failed to resolve the Function App hostname." in result.stderr
+    assert "az must not configure" not in result.stderr
+
+
 def test_outlook_fallback_is_allow_listed_and_optional() -> None:
     requirements = (ROOT / "src/requirements.txt").read_text()
     gateway = (ROOT / "infra/app/connector-gateway.bicep").read_text()
@@ -370,6 +467,160 @@ az() {
 """
     result = subprocess.run(
         ["sh", "-c", command, "sh", str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "event-subscription delete" in result.stderr
+    assert "--source-resource-id" in result.stderr
+    assert "--endpoint-type webhook" in result.stderr
+
+
+_EVENTGRID_POWERSHELL_MOCK_PREAMBLE = """
+function global:azd {
+    switch ($args[2]) {
+        'AZURE_RESOURCE_GROUP_NAME' { return 'rg-test' }
+        'AZURE_FUNCTION_NAME' { return 'func-test' }
+        'AZURE_STORAGE_ACCOUNT_NAME' { return 'sttest' }
+        'POLICY_INTAKE_CONTAINER' { return 'policy-intake' }
+        default { throw "unexpected azd command: $($args -join ' ')" }
+    }
+}
+"""
+
+
+def test_eventgrid_powershell_creates_filtered_azure_function_subscription() -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("PowerShell is not installed.")
+    script = ROOT / "infra/scripts/configure-eventgrid-blob-trigger.ps1"
+    command = (
+        _EVENTGRID_POWERSHELL_MOCK_PREAMBLE
+        + """
+function global:az {
+    $joined = $args -join ' '
+    if ($joined -match '^storage account show ') {
+        $global:LASTEXITCODE = 0
+        return '/subscriptions/sub/resourceGroups/rg-test/providers/' +
+            'Microsoft.Storage/storageAccounts/sttest'
+    }
+    if ($joined -match '^resource show -g ') {
+        $global:LASTEXITCODE = 0
+        return 'func-test.azurewebsites.net'
+    }
+    if ($joined -match '^functionapp function show ') {
+        $global:LASTEXITCODE = 0
+        return 'EventGrid'
+    }
+    if ($joined -match '^functionapp keys list ') {
+        $global:LASTEXITCODE = 0
+        return 'blob-extension-key'
+    }
+    if ($joined -match 'include-full-endpoint-url') {
+        $global:LASTEXITCODE = 0
+        return 'https://func-test.azurewebsites.net/runtime/webhooks/blobs?functionName=Host.Functions.main&code=blob-extension-key'
+    }
+    if ($joined -match 'filter\\.subjectBeginsWith') {
+        $global:LASTEXITCODE = 0
+        return '/blobServices/default/containers/policy-intake/blobs/normalized/'
+    }
+    if ($joined -match 'includedEventTypes') {
+        $global:LASTEXITCODE = 0
+        return 'Microsoft.Storage.BlobCreated'
+    }
+    if ($joined -match '^eventgrid event-subscription show ') {
+        $global:LASTEXITCODE = 1
+        return ''
+    }
+    if ($joined -match '^eventgrid event-subscription create ') {
+        $global:LASTEXITCODE = 0
+        [Console]::Error.WriteLine($joined)
+        return
+    }
+    $global:LASTEXITCODE = 98
+    [Console]::Error.WriteLine("unexpected az command: $joined")
+}
+& $args[0]
+"""
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", command, str(script)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "--endpoint-type webhook" in result.stderr
+    assert (
+        "--endpoint https://func-test.azurewebsites.net/runtime/webhooks/"
+        "blobs?functionName=Host.Functions.main&code=blob-extension-key"
+    ) in result.stderr
+    assert "--included-event-types Microsoft.Storage.BlobCreated" in result.stderr
+    assert (
+        "--subject-begins-with /blobServices/default/containers/"
+        "policy-intake/blobs/normalized/"
+    ) in result.stderr
+    assert "event-subscription delete" not in result.stderr
+
+
+def test_eventgrid_powershell_recreates_existing_subscription() -> None:
+    if shutil.which("pwsh") is None:
+        pytest.skip("PowerShell is not installed.")
+    script = ROOT / "infra/scripts/configure-eventgrid-blob-trigger.ps1"
+    command = (
+        _EVENTGRID_POWERSHELL_MOCK_PREAMBLE
+        + """
+function global:az {
+    $joined = $args -join ' '
+    if ($joined -match '^storage account show ') {
+        $global:LASTEXITCODE = 0
+        return '/subscriptions/sub/resourceGroups/rg-test/providers/' +
+            'Microsoft.Storage/storageAccounts/sttest'
+    }
+    if ($joined -match '^resource show -g ') {
+        $global:LASTEXITCODE = 0
+        return 'func-test.azurewebsites.net'
+    }
+    if ($joined -match '^functionapp function show ') {
+        $global:LASTEXITCODE = 0
+        return 'EventGrid'
+    }
+    if ($joined -match '^functionapp keys list ') {
+        $global:LASTEXITCODE = 0
+        return 'blob-extension-key'
+    }
+    if ($joined -match 'include-full-endpoint-url') {
+        $global:LASTEXITCODE = 0
+        return 'https://func-test.azurewebsites.net/runtime/webhooks/blobs?functionName=Host.Functions.main&code=blob-extension-key'
+    }
+    if ($joined -match 'filter\\.subjectBeginsWith') {
+        $global:LASTEXITCODE = 0
+        return '/blobServices/default/containers/policy-intake/blobs/normalized/'
+    }
+    if ($joined -match 'includedEventTypes') {
+        $global:LASTEXITCODE = 0
+        return 'Microsoft.Storage.BlobCreated'
+    }
+    if ($joined -match '^eventgrid event-subscription (show|delete) ') {
+        $global:LASTEXITCODE = 0
+        [Console]::Error.WriteLine($joined)
+        return ''
+    }
+    if ($joined -match '^eventgrid event-subscription create ') {
+        $global:LASTEXITCODE = 0
+        [Console]::Error.WriteLine($joined)
+        return
+    }
+    $global:LASTEXITCODE = 98
+    [Console]::Error.WriteLine("unexpected az command: $joined")
+}
+& $args[0]
+"""
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", command, str(script)],
         capture_output=True,
         text=True,
         check=False,
