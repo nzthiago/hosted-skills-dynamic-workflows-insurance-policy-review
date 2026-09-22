@@ -3,17 +3,33 @@
 ## Complete request
 
 Create a row with both statuses set to `received`. The report lists both required
-document types as present.
+document types as present:
+
+```bash
+uv run --with-requirements requirements.txt \
+  python scripts/create_dataverse_request.py \
+  --azd-environment "<azd environment>" \
+  --signed-request-status received \
+  --wait
+```
 
 ## Missing document
 
 Set Signed request status to `missing`. The report identifies `signed_request` as
-missing while retaining its filename as business metadata.
+missing while retaining its filename as business metadata. This is the script default.
 
 ## Expired driver licence
 
 Set Driver licence status to `expired`. The report marks the evidence as requiring a
-current copy.
+current copy:
+
+```bash
+uv run --with-requirements requirements.txt \
+  python scripts/create_dataverse_request.py \
+  --azd-environment "<azd environment>" \
+  --driver-licence-status expired \
+  --wait
+```
 
 ## Duplicate delivery
 

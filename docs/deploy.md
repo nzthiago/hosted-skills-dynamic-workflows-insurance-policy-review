@@ -70,6 +70,34 @@ to `Microsoft.Storage.BlobCreated` events whose subject begins with
 `/blobServices/default/containers/policy-intake/blobs/normalized/`. The webhook callback
 contains the `blobs_extension` system key and is never printed.
 
+## Create and monitor a test request
+
+The repository includes a cross-platform Python command that creates a new Dataverse row
+without printing tokens and optionally waits across the five-minute connector poll:
+
+```bash
+uv run --with-requirements requirements.txt \
+  python scripts/create_dataverse_request.py \
+  --azd-environment "<azd environment>" \
+  --wait \
+  --download-report
+```
+
+The default Azure CLI authentication path works with Microsoft corporate Conditional
+Access. The command resolves Dataverse and Storage settings from ignored `.azure/` state,
+generates a unique Request ID, checks that it does not already exist, POSTs a new row, and
+waits up to 15 minutes for:
+
+1. `policy-intake/normalized/<request-id>.json`
+2. Event Grid dispatch to `Host.Functions.main`
+3. Dynamic Workflow completion and
+   `policy-review-packets/reviews/<request-id>.html`
+
+Use `--timeout-minutes` for a different limit. Use `--request-id` only when a specific
+safe ID is required; reruns should normally omit it so each row starts a new review.
+The command prints the DTS dashboard URL when available and downloads the report to
+`output/<request-id>.html` when `--download-report` is present.
+
 ## Enable Outlook fallback
 
 Outlook is disabled by default. Enable it before `azd up` when an attachment-based

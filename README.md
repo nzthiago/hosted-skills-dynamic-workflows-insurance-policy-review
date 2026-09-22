@@ -141,21 +141,46 @@ Request ID first prevents the other path from starting a duplicate workflow.
 
 1. Complete schema setup, deployment, connector authorization, and trigger configuration
    before the presentation.
-2. In Power Apps, create a new `Policy Service Request` row with a unique Request ID.
-3. Allow at least one five-minute polling interval.
-4. Follow the workflow in the Durable Task Scheduler dashboard:
+2. Create a row with a unique Request ID and wait for the normalized manifest and HTML
+   report:
 
    ```bash
-   azd env get-value DURABLE_TASK_DASHBOARD_URL
+   uv run --with-requirements requirements.txt \
+     python scripts/create_dataverse_request.py \
+     --azd-environment "<azd environment>" \
+     --wait \
+     --download-report
    ```
 
-5. Download the generated report:
+   The corporate Conditional Access-friendly default reuses the current Azure CLI login
+   for Dataverse and Blob Storage. It never prints access tokens. Environment URL/ID,
+   table name, storage URL, and container names are read from ignored azd state. Supply
+   `--environment-url`, `--environment-id`, or storage arguments explicitly when not
+   using azd state.
+3. Allow at least one five-minute connector polling interval. The command uses a
+   15-minute default timeout and reports these stages separately:
+   Dataverse row created → normalized manifest ready → HTML report ready.
+4. Open the Durable Task Scheduler dashboard printed by the command, or retrieve it:
 
    ```bash
-   export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL)"
-   export POLICY_REVIEW_CONTAINER="$(azd env get-value POLICY_REVIEW_CONTAINER)"
-   uv run --with-requirements requirements.txt python scripts/demo.py download
+   azd env get-value DURABLE_TASK_DASHBOARD_URL -e "<azd environment>"
    ```
+
+5. With `--download-report`, the generated report is saved to
+   `output/<request-id>.html`. To download it later:
+
+   ```bash
+   export POLICY_REVIEW_STORAGE_URL="$(azd env get-value POLICY_REVIEW_STORAGE_URL -e "<azd environment>")"
+   export POLICY_REVIEW_CONTAINER="$(azd env get-value POLICY_REVIEW_CONTAINER -e "<azd environment>")"
+   uv run --with-requirements requirements.txt python scripts/demo.py download \
+     --blob "reviews/<request-id>.html" \
+     --output "output/<request-id>.html"
+   ```
+
+Omit `--request-id` to generate a unique value for every run. To control the scenario,
+set `--policy-id`, `--driver-name`, `--driver-licence-status`, and
+`--signed-request-status`. The script checks for an existing Request ID before POSTing
+and never updates or overwrites a Dataverse row.
 
 ## Manual fallback
 
@@ -198,6 +223,7 @@ manual fallback.
 - Authorize the Dataverse connection and create the trigger before inserting the demo row.
 - Use a unique Request ID for each rehearsal and live run.
 - Budget at least five minutes for polling; do not edit an existing row and expect a run.
+- Use `scripts/create_dataverse_request.py --wait` so the demo shows each proven boundary.
 - If enabled, pre-authorize Outlook and keep one correctly named attachment message ready.
 - Keep `examples/policy-service-request.json` ready for immediate manual fallback.
 - Confirm the Durable Task Scheduler dashboard and report download before presenting.

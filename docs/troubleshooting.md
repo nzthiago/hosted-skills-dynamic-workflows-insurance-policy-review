@@ -51,6 +51,23 @@ Confirm:
 This sample does not support update or delete events. Editing an existing row cannot
 start a workflow.
 
+Run the monitored test command to distinguish connector polling from downstream
+processing:
+
+```bash
+uv run --with-requirements requirements.txt \
+  python scripts/create_dataverse_request.py \
+  --azd-environment "<azd environment>" \
+  --wait
+```
+
+- If no normalized manifest appears within 15 minutes, inspect connector authorization,
+  `GetOnNewItems_V2`, table permissions, and the five-minute polling schedule.
+- If the manifest appears but no HTML report does, inspect the `policy-intake-main`
+  Event Grid subscription, `Functions.main` telemetry, and the DTS dashboard.
+- Event Grid metrics alone are not a sufficient success gate. The authoritative signals
+  are the normalized Blob, `Functions.main` execution, DTS completion, and HTML Blob.
+
 ## A row is rejected
 
 All required columns must contain strings. Status fields accept only `received`,
@@ -64,6 +81,9 @@ sensitive row contents.
 
 This is expected when its Request ID already has a normalized manifest. Connector
 retries race on a Blob lease and cannot create another manifest.
+
+`scripts/create_dataverse_request.py` also refuses to create a row when its Request ID
+already exists. Omit `--request-id` to generate a unique ID for every run.
 
 ## Outlook fallback is not provisioned
 
@@ -95,7 +115,7 @@ discarded and `GetAttachment_V2` retrieves each attachment explicitly.
 Check the `policy-intake/normalized/` prefix and open:
 
 ```bash
-azd env get-value DURABLE_TASK_DASHBOARD_URL
+azd env get-value DURABLE_TASK_DASHBOARD_URL -e "<azd environment>"
 ```
 
 ## Live connector testing is blocked
