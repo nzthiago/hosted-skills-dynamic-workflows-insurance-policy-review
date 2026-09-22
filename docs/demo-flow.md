@@ -80,9 +80,11 @@ since row creation — comfortably past one five-minute poll.
 
 **Terminal:**
 
-- Windows Terminal, one tab, PowerShell 7+ (`pwsh`) profile pinned as default,
-  font size bumped for the room (18pt+).
-- Working directory already at the repository root.
+- Windows Terminal, PowerShell 7+ (`pwsh`) profile pinned as default, font
+  size bumped for the room (18pt+). Two tabs: one dedicated to the E2E
+  script launched at 0:00 and left running untouched until minute 18:00 (see
+  Step 1 below), and a separate working tab for anything else.
+- Working directory already at the repository root in both tabs.
 - Command history cleared of any environment-specific values; retype the
   `--azd-environment` flag live rather than relying on shell history/autocomplete
   that could reveal another environment's name.
@@ -103,23 +105,141 @@ since row creation — comfortably past one five-minute poll.
 
 ## Exact live Demo 2 sequence
 
-Run this starting at minute 0:00 (row creation) and return to steps 4–8 at
-minute 18:00.
+**Launch at minute 0:00, in a dedicated terminal tab you leave running and
+untouched.** This is the same terminal tab referenced again at minute 18:00 —
+open a second Windows Terminal tab for it now if Demo 1 needs the first tab
+free. Do not close or reuse this tab before Step 7.
 
-| # | Thiago does | Screen shows | Narration (one line) |
-| --- | --- | --- | --- |
-| 1 | Runs the E2E script with `--wait --download-report` in a terminal, no `--request-id` (unique ID auto-generated) | Terminal prints the generated Request ID and "row created" | "This is one real Dataverse row — a Policy Service Request — created just now." |
-| 2 | Switches to Demo 1 for the next ~11 minutes | (Demo 1 screens) | — |
-| 3 | Returns to the terminal tab | Terminal shows "normalized manifest ready" (should already be printed) | "While we talked, the connector polled, picked up the row, and normalized it into a Blob manifest." |
-| 4 | Switches to the Blob container tab | `policy-intake/normalized/<request-id>.json` listed | "One deterministic JSON file — the only thing this connector produces, no automation started yet." |
-| 5 | Switches to the Durable Task Scheduler dashboard tab (or opens the printed URL) | Orchestration instance in **Running** or **Completed** state, with the parallel-inspect fan-out visible | "Event Grid picked up that Blob and invoked the hosted skill — here's the durable workflow it built: validate, inspect each document in parallel, build, publish." |
-| 6 | Points at the fan-out step specifically | Multiple parallel `inspect_driver_document` activities | "Two documents, two parallel branches — this plan was authored by the model, not hand-coded as a DAG." |
-| 7 | Switches to the terminal | "HTML report ready" printed, report path shown | "The workflow just finished — durably, with every step recorded." |
-| 8 | Opens the downloaded `output/<request-id>.html` (or the Blob tab) | HTML report with `human_review_required` banner and per-document status | "The report flags what's missing or expired — and the decision stays right here: `decision: null`. No auto-approval, no auto-denial." |
+### Step 1 — 0:00 · Launch the E2E script (this is "Run the E2E script")
 
-If the manifest or report has **not** appeared by the time you return at
-18:00, go straight to the fallback ladder below — do not wait silently on
-stage.
+- **Action:** In the dedicated tab, paste and run:
+
+  ```powershell
+  uv run --with-requirements requirements.txt `
+    python scripts/create_dataverse_request.py `
+    --azd-environment "ipr-dv-e2e-0917" `
+    --wait `
+    --download-report
+  ```
+
+  (Swap `ipr-dv-e2e-0917` for your own `--azd-environment` value if different.
+  Omitting `--request-id` auto-generates a unique `PSR-DV-<timestamp>-<random>`
+  ID, so this run can never collide with rehearsal.)
+- **What appears:** Within a few seconds:
+  `Request ID: PSR-DV-...`, `Dataverse row ID: ...`,
+  `Expected manifest: policy-intake/normalized/<request-id>.json`,
+  `Expected report: policy-review-packets/reviews/<request-id>.html`, then
+  `Normalized manifest: waiting (the connector polls every five minutes;
+  timeout 15 minutes)`. The script then blocks silently — that is expected,
+  it is polling Blob Storage every 15 seconds in the background.
+- **What to show:** The terminal tab itself, for a few seconds only.
+- **Say:** "This is one real Dataverse row — a Policy Service Request —
+  created just now. It generates its own unique ID, so this run can't
+  collide with anything from rehearsal."
+- **If it stalls:** No `Request ID:` line within ~10 seconds means the script
+  failed before creating the row (auth or environment resolution). Press
+  `Ctrl+C`, glance at the printed error, and re-run once. If it fails twice,
+  move on to slides anyway and use the fallback ladder's pre-seeded run at
+  18:00 — never debug auth live.
+
+**Now switch away** to the opening/Demo 1 screens for the next ~11 minutes.
+Leave the dedicated tab alone; do not alt-tab back to check it.
+
+### Step 2 — 18:00 · Return to the terminal tab
+
+- **Action:** Alt-tab back to the dedicated terminal tab from Step 1. Do not
+  press Enter or re-run anything.
+- **What appears:** `Normalized manifest: ready after <N>s` should already be
+  printed (the five-minute connector poll elapsed during Demo 1). The next
+  line will be either `HTML report: waiting for Event Grid, Functions.main,
+  and DTS` (still running) or `HTML report: ready after <N>s` (already done).
+- **What to show:** The terminal tab.
+- **Say:** "While we talked, the connector polled, picked up the row, and
+  normalized it into a Blob manifest."
+- **If it stalls:** Still on `Normalized manifest: waiting...` after 18+
+  minutes elapsed means the poll hasn't fired yet. Give it the 30–60 seconds
+  from fallback ladder step 1 while narrating the architecture slide; if it's
+  still not there, jump straight to fallback ladder step 2 (pre-seeded run).
+
+### Step 3 — Show the normalized manifest
+
+- **Action:** Click pinned browser tab 3 (Blob container
+  `policy-intake/normalized/`). If using Storage Browser in the Azure portal,
+  it's already scoped to that container/prefix from the pre-stage checklist.
+- **What appears:** One JSON blob named `<request-id>.json` (the exact ID
+  printed in Step 1), with a "Last modified" timestamp a few minutes old.
+- **What to show:** That blob listing.
+- **Say:** "One deterministic JSON file — the only thing this connector
+  produces, no automation started yet."
+- **If it stalls:** Blob not listed yet — refresh the container view once; if
+  still missing, the manifest genuinely isn't there, return to Step 2's
+  fallback.
+
+### Step 4 — Show the Durable Task Scheduler dashboard
+
+- **Action:** Click pinned browser tab 4 (DTS dashboard). If it isn't already
+  loaded, retrieve and open the URL directly:
+
+  ```powershell
+  Start-Process (azd env get-value DURABLE_TASK_DASHBOARD_URL -e "ipr-dv-e2e-0917")
+  ```
+
+  (The same URL is also printed by the script itself, as `DTS dashboard:
+  https://...`, once the report finishes — see Step 6.)
+- **What appears:** An orchestration instance for `<request-id>` in
+  **Running** or **Completed** state, with the parallel-inspect fan-out
+  visible in the instance graph.
+- **What to show:** That orchestration instance's detail view.
+- **Say:** "Event Grid picked up that Blob and invoked the hosted skill —
+  here's the durable workflow it built: validate, inspect each document in
+  parallel, build, publish."
+- **If it stalls:** Instance not listed yet — wait ~30 seconds while
+  narrating from slides; do not repeatedly refresh on stage.
+
+### Step 5 — Point at the fan-out
+
+- **Action:** Click/expand the parallel activity group in the DTS dashboard
+  instance view.
+- **What appears:** Multiple parallel `inspect_driver_document` activities.
+- **What to show:** The expanded fan-out (same tab as Step 4).
+- **Say:** "Two documents, two parallel branches — this plan was authored by
+  the model, not hand-coded as a DAG."
+- **If it stalls:** Not applicable — this is a read of an already-completed
+  instance from Step 4.
+
+### Step 6 — Back to the terminal for completion
+
+- **Action:** Alt-tab to the dedicated terminal tab (Steps 1–2).
+- **What appears, in order:** `HTML report: ready after <N>s`, then
+  `Downloaded report: C:\...\output\<request-id>.html`, then
+  `DTS dashboard: https://...`, then `E2E success: Dataverse row, normalized
+  manifest, and HTML report are ready.`
+- **What to show:** The terminal tab.
+- **Say:** "The workflow just finished — durably, with every step recorded."
+- **If it stalls:** Still on `HTML report: waiting for Event Grid,
+  Functions.main, and DTS` after another ~60 seconds — go to fallback ladder
+  step 2 (pre-seeded report) rather than waiting further on stage.
+
+### Step 7 — Open the HTML report
+
+- **Action:** In the same terminal, open the file the previous step printed:
+
+  ```powershell
+  Start-Process "output\<request-id>.html"
+  ```
+
+  (Substitute the Request ID printed in Step 1; or click the path from the
+  `Downloaded report:` line directly in File Explorer.)
+- **What appears:** Default browser opens the report showing a
+  `Human review required. No decision has been made.` banner and
+  per-document status rows for the licence and signed-request documents.
+- **What to show:** This newly opened browser tab — make it your active
+  window.
+- **Say:** "The report flags what's missing or expired — and the decision
+  stays right here: `decision: null`. No auto-approval, no auto-denial."
+- **If it stalls:** File not found yet (Step 6 hadn't finished downloading) —
+  switch instead to pinned browser tab 5
+  (`policy-review-packets/reviews/`) and open the blob there.
 
 ## WOW moments to call out explicitly
 
@@ -166,17 +286,57 @@ narrating:
 2. **Show the pre-seeded orchestration.** Switch to the previously validated
    Request ID's DTS instance and report, opened before the talk. Label it
    clearly: *"here's a run from rehearsal, same path, already completed."*
-3. **Use the E2E script's manual path.** Run
-   `uv run --with-requirements requirements.txt python scripts/demo.py submit-manual --request examples/policy-service-request.json`
-   (identical in PowerShell and Bash/zsh — no line continuation needed) to write
-   the same normalized manifest directly, bypassing the connector poll
-   entirely, and continue narrating from the Blob/DTS/report steps.
+3. **Use the E2E script's manual path.** Set the storage target, then submit
+   directly (without these two variables the script falls back to a local
+   dev-storage connection string, not the real demo storage account):
+
+   ```powershell
+   $env:POLICY_REVIEW_STORAGE_URL = azd env get-value POLICY_REVIEW_STORAGE_URL -e "ipr-dv-e2e-0917"
+   $env:POLICY_INTAKE_CONTAINER = azd env get-value POLICY_INTAKE_CONTAINER -e "ipr-dv-e2e-0917"
+   uv run --with-requirements requirements.txt python scripts/demo.py submit-manual --request examples/policy-service-request.json
+   ```
+
+   (Identical on Bash/zsh with `export` in place of `$env:` — no line
+   continuation needed either way.) This writes the same normalized manifest
+   directly, bypassing the connector poll entirely. Console shows `Submitted
+   fallback request PSR-2026-00042 with 2 document records.` Continue
+   narrating from the Blob/DTS/report steps (Steps 3–7 above), using Request
+   ID `PSR-2026-00042` (from `examples/policy-service-request.json`) in place
+   of the auto-generated ID.
 4. **Show the known-good report.** If Blob Storage, Event Grid, or DTS are
    unreachable, open the downloaded `output/<request-id>.html` from your own
    device — no network dependency.
 5. **Never** attempt to re-authenticate Azure CLI, `azd`, or the Connector
    Namespace connection live. If auth is broken, move straight to step 4 and
    explain that this is a previously validated run.
+
+<details>
+<summary>Optional presenter recovery: inspect the manifest/report directly
+with Azure CLI (not part of the happy path — use only if a browser tab
+fails)</summary>
+
+Only if a pinned browser tab won't load, confirm a blob exists straight from
+Azure CLI (`--auth-mode login` reuses your existing `az login`, no keys or
+SAS needed):
+
+```powershell
+$storageAccount = (azd env get-value POLICY_REVIEW_STORAGE_URL -e "ipr-dv-e2e-0917") -replace 'https://([^.]+)\..*', '$1'
+
+# Confirm the normalized manifest exists
+az storage blob show --account-name $storageAccount --auth-mode login `
+  --container-name policy-intake --name "normalized/<request-id>.json"
+
+# Confirm/download the HTML report
+az storage blob download --account-name $storageAccount --auth-mode login `
+  --container-name policy-review-packets --name "reviews/<request-id>.html" `
+  --file "output/<request-id>.html"
+```
+
+This is a diagnostic check, not something to narrate or show on the
+projector — glance at the terminal, confirm the blob exists, then return to
+the normal Blob-container/report browser tabs.
+
+</details>
 
 ## Reset / rehearsal instructions
 
