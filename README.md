@@ -228,6 +228,9 @@ manual fallback.
 - Keep `examples/policy-service-request.json` ready for immediate manual fallback.
 - Confirm the Durable Task Scheduler dashboard and report download before presenting.
 
+For a full stage runbook — exact minute marks, click-by-click Demo 2 sequence, WOW
+moments, and a fallback ladder — see [Demo flow](docs/demo-flow.md).
+
 ## How it works
 
 Dataverse `GetOnNewItems_V2` poll (primary) or Outlook `OnNewEmailV3` (optional) →
@@ -240,7 +243,8 @@ concurrent deliveries, and report publication uses a stable overwrite-safe Blob 
 [Use cases](docs/use-cases.md) ·
 [Customize](docs/customize.md) ·
 [Deploy](docs/deploy.md) ·
-[Troubleshooting](docs/troubleshooting.md)
+[Troubleshooting](docs/troubleshooting.md) ·
+[Demo flow](docs/demo-flow.md)
 
 Clean up Azure resources with `azd down --purge`. Dataverse solution cleanup remains an
 explicit environment-owner action.
